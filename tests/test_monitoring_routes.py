@@ -15,6 +15,7 @@ from app.routes.monitoring import (
     PatchTargetInput,
     PutMappingInput,
     create_price_target,
+    delete_price_target,
     get_monitoring_quotes,
     list_price_evaluations,
     list_price_notifications,
@@ -286,6 +287,26 @@ class MonitoringRouteTests(unittest.TestCase):
         args, kwargs = portfolio.quotes.get_quotes.call_args
         self.assertEqual(args[0], [btc_id])
         self.assertEqual(kwargs["portfolio_id"], self.portfolio_id)
+
+    @patch("app.routes.monitoring.target_service.delete_target")
+    def test_delete_price_target_route_success_and_conflict(self, mock_delete):
+        target_id = uuid4()
+        mock_delete.return_value = ({"id": str(target_id), "deleted": True}, False)
+        with patch("app.routes.monitoring.portfolio_service", self.portfolio_stub), \
+             patch("app.routes.monitoring.get_db_connection", return_value=self.connection):
+            res = delete_price_target(
+                target_id, Response(), if_match="1", idempotency_key=uuid4(), user_id=self.user_id
+            )
+            self.assertTrue(res["deleted"])
+            self.assertEqual(self.connection.commits, 1)
+
+            from app.services.portfolio import RevisionConflictError
+            mock_delete.side_effect = RevisionConflictError("Conflito de versão.")
+            with self.assertRaises(HTTPException) as raised:
+                delete_price_target(
+                    target_id, Response(), if_match="1", idempotency_key=uuid4(), user_id=self.user_id
+                )
+            self.assertEqual(raised.exception.status_code, 409)
 
 
 if __name__ == "__main__":

@@ -52,12 +52,13 @@ try:
             return self
 
         pool_min_size: int = Field(default=1, alias="POOL_MIN_SIZE")
-        pool_max_size: int = Field(default=3, alias="POOL_MAX_SIZE")
-        pool_timeout_seconds: float = Field(default=2.0, alias="POOL_TIMEOUT_SECONDS")
-        lock_timeout_seconds: float = Field(default=2.0, alias="LOCK_TIMEOUT_SECONDS")
+        pool_max_size: int = Field(default=10, alias="POOL_MAX_SIZE")
+        pool_timeout_seconds: float = Field(default=10.0, alias="POOL_TIMEOUT_SECONDS")
+        lock_timeout_seconds: float = Field(default=5.0, alias="LOCK_TIMEOUT_SECONDS")
         statement_timeout_seconds: float = Field(
-            default=5.0, alias="STATEMENT_TIMEOUT_SECONDS"
+            default=15.0, alias="STATEMENT_TIMEOUT_SECONDS"
         )
+
 
 except ImportError:
     # Fallback leve caso pydantic-settings não esteja instalado no ambiente local

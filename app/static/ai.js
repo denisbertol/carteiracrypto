@@ -95,7 +95,10 @@
     const cancel = node("button", "btn btn-ghost", "Cancelar");
     cancel.type = "button";
     cancel.addEventListener("click", () => closeDialog(dialog));
-    actions.append(cancel, node("button", "btn btn-primary", "Salvar"));
+    const test = node("button", "btn btn-outline", "Testar conexão");
+    test.type = "button";
+    test.addEventListener("click", () => testSettings(form));
+    actions.append(cancel, test, node("button", "btn btn-primary", "Salvar"));
     const status = node("p", "form-status", "");
     status.dataset.formStatus = "true";
     status.hidden = true;
@@ -170,6 +173,26 @@
       statusLine(form, error.message || "Não foi possível salvar a configuração.", true);
     } finally {
       form.dataset.saving = "false";
+    }
+  }
+
+  async function testSettings(form) {
+    if (form.dataset.testing === "true" || form.dataset.saving === "true") return;
+    const apiKey = form.elements.api_key.value.trim();
+    if (apiKey) {
+      statusLine(form, "Salvando chave antes de testar…");
+      await saveSettings(form);
+      if (form.querySelector("[data-form-status]").classList.contains("form-error")) return;
+    }
+    form.dataset.testing = "true";
+    statusLine(form, "Testando conexão com o Gemini…");
+    try {
+      const { body } = await ui().request("/api/v1/ai/test", { method: "POST" });
+      statusLine(form, body.message || "Conexão com o Gemini bem-sucedida!");
+    } catch (error) {
+      statusLine(form, error.message || "Não foi possível testar a conexão.", true);
+    } finally {
+      form.dataset.testing = "false";
     }
   }
 
@@ -351,7 +374,11 @@
         await openSettings(error.message);
         return;
       }
-      statusLine(form, error.message || "Não foi possível ler o material.", true);
+      if (error.code === "AI_CREDITS_DEPLETED") {
+        statusLine(form, `${error.message} Clique na engrenagem ⚙ no topo para atualizar a chave.`, true);
+      } else {
+        statusLine(form, error.message || "Não foi possível ler o material.", true);
+      }
     } finally {
       form.dataset.saving = "false";
     }

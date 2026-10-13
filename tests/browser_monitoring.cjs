@@ -417,6 +417,10 @@ async function dashboardFixture() {
           Object.assign(target, JSON.parse(options.body));
           target.version += 1;
           body = target;
+        } else if (route.startsWith("/api/v1/price-targets/") && method === "DELETE") {
+          const index = state.targets.findIndex((item) => route.endsWith(item.id));
+          if (index !== -1) state.targets.splice(index, 1);
+          body = { id: route.split("/").pop(), deleted: true };
         } else if (route === "/api/v1/monitoring/settings" && method === "GET") body = state.settings;
         else if (route === "/api/v1/monitoring/settings" && method === "PATCH") {
           Object.assign(state.settings, JSON.parse(options.body));

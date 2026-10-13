@@ -153,6 +153,9 @@ def create_price_target(
             except (ValueError, LookupError, RevisionConflictError, IdempotencyConflictError) as exc:
                 conn.rollback()
                 raise _translate_mutation_error(exc)
+            except Exception as exc:
+                conn.rollback()
+                raise _translate_mutation_error(exc)
             conn.commit()
     response.status_code = status.HTTP_200_OK if replayed else status.HTTP_201_CREATED
     if replayed:
@@ -184,10 +187,45 @@ def patch_price_target(
             except (ValueError, LookupError, RevisionConflictError, IdempotencyConflictError) as exc:
                 conn.rollback()
                 raise _translate_mutation_error(exc)
+            except Exception as exc:
+                conn.rollback()
+                raise _translate_mutation_error(exc)
             conn.commit()
     if replayed:
         response.headers["Idempotency-Replayed"] = "true"
     return result
+
+
+@router.delete("/price-targets/{target_id}")
+def delete_price_target(
+    target_id: UUID,
+    response: Response,
+    if_match: Optional[str] = Header(None, alias="If-Match"),
+    idempotency_key: Optional[UUID] = Header(None, alias="Idempotency-Key"),
+    user_id: UUID = Depends(get_current_user_id),
+):
+    _no_store(response)
+    expected = _expected_version(if_match) if if_match is not None else None
+    key = idempotency_key
+    with get_db_connection(user_id) as conn:
+        with conn.cursor() as cur:
+            portfolio_id, _, _ = portfolio_service.get_or_create_portfolio(cur, user_id)
+            try:
+                result, replayed = target_service.delete_target(
+                    cur, portfolio_id, user_id, target_id,
+                    expected_version=expected, idempotency_key=key,
+                )
+            except (ValueError, LookupError, RevisionConflictError, IdempotencyConflictError) as exc:
+                conn.rollback()
+                raise _translate_mutation_error(exc)
+            except Exception as exc:
+                conn.rollback()
+                raise _translate_mutation_error(exc)
+            conn.commit()
+    if replayed:
+        response.headers["Idempotency-Replayed"] = "true"
+    return result
+
 
 
 @router.get("/monitoring/settings")

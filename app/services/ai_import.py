@@ -3,6 +3,8 @@
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 import base64
+import csv
+import io
 import json
 import re
 from typing import Any, Callable
@@ -429,7 +431,23 @@ class GeminiClient:
 
     @staticmethod
     def _raise_for_status(response: Any) -> None:
-        status = response.status_code
+        status = getattr(response, "status_code", 200)
+        err_msg = ""
+        try:
+            payload = response.json() if callable(getattr(response, "json", None)) else {}
+            if isinstance(payload, dict):
+                err = payload.get("error", {})
+                if isinstance(err, dict):
+                    err_msg = str(err.get("message") or "")
+        except Exception:
+            err_msg = ""
+
+        if status == 402 or "credits are depleted" in err_msg.lower() or "billing" in err_msg.lower():
+            raise AiImportError(
+                "Os créditos da sua chave do Gemini estão esgotados no Google AI Studio (erro 402). "
+                "Adicione créditos no AI Studio ou configure uma nova chave na engrenagem de IA.",
+                "AI_CREDITS_DEPLETED",
+            )
         if status in {401, 403}:
             raise AiImportError("A chave da API do Gemini foi recusada. Confira a configuração.", "AI_REJECTED")
         if status == 404:
@@ -437,7 +455,8 @@ class GeminiClient:
         if status == 429:
             raise AiImportError("O Gemini recusou por limite de uso. Tente de novo em instantes.", "AI_BUSY")
         if status >= 400:
-            raise AiImportError("O Gemini não conseguiu ler este material.", "AI_UNAVAILABLE")
+            detail = f": {err_msg}" if err_msg else "."
+            raise AiImportError(f"O Gemini não conseguiu ler este material{detail}", "AI_UNAVAILABLE")
 
     @staticmethod
     def _response_text(response: Any) -> str:
@@ -454,3 +473,242 @@ class GeminiClient:
         if not text.strip():
             raise AiImportError("O Gemini não devolveu uma leitura utilizável.", "AI_UNREADABLE")
         return text
+
+
+def _parse_heuristic_date(raw: str) -> str:
+    s = (raw or "").strip()
+    m_br = re.search(r"\b(\d{2})/(\d{2})/(\d{4})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?\b", s)
+    if m_br:
+        d, m, y, h, mi, sec = m_br.groups()
+        h, mi, sec = h or "00", mi or "00", sec or "00"
+        return f"{y}-{m}-{d}T{h}:{mi}:{sec}+00:00"
+    m_iso = re.search(r"\b(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?\b", s)
+    if m_iso:
+        y, m, d, h, mi, sec = m_iso.groups()
+        h, mi, sec = h or "00", mi or "00", sec or "00"
+        return f"{y}-{m}-{d}T{h}:{mi}:{sec}+00:00"
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _find_col(header_row: list[str], candidates: set[str]) -> int | None:
+    for idx, col in enumerate(header_row):
+        norm = col.strip().lower()
+        if norm in candidates or any(c == norm or (len(c) > 3 and c in norm) for c in candidates):
+            return idx
+    return None
+
+
+def fallback_parse_operations(material: str, assets: list[dict[str, Any]]) -> dict[str, Any]:
+    """Processador local de contingência para extrair lançamentos de CSV, tabelas ou texto."""
+    asset_by_symbol = _asset_index(assets)
+    lines = [line.strip() for line in (material or "").strip().splitlines() if line.strip()]
+    if not lines:
+        return {"summary": None, "items": [], "skipped": []}
+
+    items: list[dict[str, Any]] = []
+    skipped: list[dict[str, str]] = []
+
+    first_line = lines[0]
+    delim = None
+    for candidate_delim in (",", ";", "\t", "|"):
+        if candidate_delim in first_line:
+            delim = candidate_delim
+            break
+
+    header_detected = False
+    if delim:
+        reader = list(csv.reader(io.StringIO(material), delimiter=delim))
+        if reader:
+            header_row = [c.strip().lower() for c in reader[0]]
+            date_col = _find_col(header_row, {"data", "date", "occurred_at", "timestamp", "time"})
+            kind_col = _find_col(header_row, {"tipo", "kind", "type", "operacao", "operação", "lado", "side"})
+            sym_col = _find_col(header_row, {"ativo", "symbol", "simbolo", "símbolo", "moeda", "coin", "asset", "par", "pair"})
+            qty_col = _find_col(header_row, {"quantidade", "quantity", "qtd", "amount", "volume"})
+            price_col = _find_col(header_row, {"preco", "preço", "price", "unit_price", "valor", "cotacao", "cotação"})
+            fee_col = _find_col(header_row, {"taxa", "fee", "comissao", "comissão"})
+            note_col = _find_col(header_row, {"nota", "note", "obs", "observacao", "observação"})
+
+            recognized_cols = sum(1 for c in (date_col, kind_col, sym_col, qty_col, price_col) if c is not None)
+            if recognized_cols >= 2:
+                header_detected = True
+                for row in reader[1:]:
+                    if not row or not any(c.strip() for c in row):
+                        continue
+                    k_val = row[kind_col].strip() if kind_col is not None and kind_col < len(row) else ""
+                    s_val = row[sym_col].strip().upper() if sym_col is not None and sym_col < len(row) else ""
+                    if "/" in s_val:
+                        s_val = s_val.split("/")[0]
+                    d_raw = row[date_col].strip() if date_col is not None and date_col < len(row) else ""
+                    d_val = _parse_heuristic_date(d_raw) if d_raw else datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    q_val = row[qty_col].strip() if qty_col is not None and qty_col < len(row) else ""
+                    p_val = row[price_col].strip() if price_col is not None and price_col < len(row) else None
+                    f_val = row[fee_col].strip() if fee_col is not None and fee_col < len(row) else "0"
+                    n_val = row[note_col].strip() if note_col is not None and note_col < len(row) else None
+
+                    norm_k = _KIND_ALIASES.get(k_val.lower())
+                    if not s_val and norm_k in _USDT_ONLY:
+                        s_val = "USDT"
+
+                    items.append({
+                        "kind": norm_k or k_val,
+                        "symbol": s_val,
+                        "occurred_at": d_val,
+                        "quantity": q_val,
+                        "unit_price_usd": p_val,
+                        "fee_usdt": f_val or "0",
+                        "note": n_val,
+                    })
+
+    if not header_detected:
+        for line in lines:
+            orig_line = line
+            occurred = _parse_heuristic_date(line)
+            m_dt = re.search(r"\b(?:\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2})(?:[ T]\d{2}:\d{2}(?::\d{2})?)?\b", line)
+            if m_dt:
+                line = line.replace(m_dt.group(0), " ")
+
+            fee = "0"
+            m_fee = re.search(r"\b(?:taxa|fee)\b(?:\s*(?:de|em|usdt|:|=))?\s*([0-9]+(?:[.,][0-9]+)?)", line, re.IGNORECASE)
+            if m_fee:
+                fee = m_fee.group(1)
+                line = line.replace(m_fee.group(0), " ")
+
+            kind = None
+            for kw, kv in _KIND_ALIASES.items():
+                pat = r"\b" + re.escape(kw) + r"\b"
+                if re.search(pat, line, re.IGNORECASE):
+                    kind = kv
+                    line = re.sub(pat, " ", line, flags=re.IGNORECASE)
+                    break
+
+            symbol = None
+            for sym in sorted(asset_by_symbol.keys(), key=len, reverse=True):
+                pat = r"\b" + re.escape(sym) + r"(?:/USDT|-USDT)?\b"
+                if re.search(pat, line, re.IGNORECASE):
+                    symbol = sym.upper()
+                    line = re.sub(pat, " ", line, flags=re.IGNORECASE)
+                    break
+            if not symbol and kind in _USDT_ONLY:
+                symbol = "USDT"
+
+            price = None
+            m_price = re.search(
+                r"(?:\b(?:por|a|preço|preco|price|cotação|cotacao|valor)\b|@)(?:\s*(?:de|em|usd|usdt|:|=))?\s*([0-9]+(?:[.,][0-9]+)?)",
+                line,
+                re.IGNORECASE,
+            )
+            if m_price:
+                price = m_price.group(1)
+                line = line.replace(m_price.group(0), " ")
+
+            nums = re.findall(r"[0-9]+(?:[.,][0-9]+)?", line)
+            qty = None
+            if nums:
+                qty = nums[0]
+                if len(nums) > 1 and not price:
+                    price = nums[1]
+
+            if kind and symbol and qty:
+                items.append({
+                    "kind": kind,
+                    "symbol": symbol,
+                    "occurred_at": occurred,
+                    "quantity": qty,
+                    "unit_price_usd": price,
+                    "fee_usdt": fee,
+                    "note": None,
+                })
+            else:
+                skipped.append({"description": orig_line[:200], "reason": "Não foi possível identificar tipo, ativo ou quantidade."})
+
+    return normalize_operations({
+        "items": items,
+        "skipped": skipped,
+        "summary": "Processamento local de contingência concluído.",
+    }, assets)
+
+
+def fallback_parse_targets(
+    material: str,
+    assets: list[dict[str, Any]],
+    targets: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Processador local de contingência para extrair alvos de CSV, tabelas ou texto."""
+    asset_by_symbol = _asset_index(assets)
+    lines = [line.strip() for line in (material or "").strip().splitlines() if line.strip()]
+    if not lines:
+        return {"summary": None, "items": [], "skipped": []}
+
+    items: list[dict[str, Any]] = []
+    skipped: list[dict[str, str]] = []
+
+    first_line = lines[0]
+    delim = None
+    for candidate_delim in (",", ";", "\t", "|"):
+        if candidate_delim in first_line:
+            delim = candidate_delim
+            break
+
+    header_detected = False
+    if delim:
+        reader = list(csv.reader(io.StringIO(material), delimiter=delim))
+        if reader:
+            header_row = [c.strip().lower() for c in reader[0]]
+            sym_col = _find_col(header_row, {"ativo", "symbol", "simbolo", "símbolo", "moeda", "coin", "asset", "ticker"})
+            price_col = _find_col(header_row, {"preco", "preço", "price", "alvo", "target", "valor", "cotacao", "cotação"})
+            active_col = _find_col(header_row, {"ativo?", "active", "status", "ativado"})
+            note_col = _find_col(header_row, {"orientacao", "orientação", "obs", "observacao", "observação", "nota", "note"})
+
+            if sym_col is not None and price_col is not None:
+                header_detected = True
+                for row in reader[1:]:
+                    if not row or not any(c.strip() for c in row):
+                        continue
+                    s_val = row[sym_col].strip().upper() if sym_col < len(row) else ""
+                    if "/" in s_val:
+                        s_val = s_val.split("/")[0]
+                    p_val = row[price_col].strip() if price_col < len(row) else ""
+                    act_val = True
+                    if active_col is not None and active_col < len(row):
+                        raw_act = row[active_col].strip().lower()
+                        if raw_act in ("false", "0", "nao", "não", "inativo"):
+                            act_val = False
+                    n_val = row[note_col].strip() if note_col is not None and note_col < len(row) else None
+                    if s_val and p_val:
+                        items.append({"symbol": s_val, "price_usd": p_val, "active": act_val, "orientation": n_val})
+                    else:
+                        skipped.append({"description": ",".join(row)[:200], "reason": "Símbolo ou preço alvo ausente."})
+
+    if not header_detected:
+        for line in lines:
+            orig_line = line
+            symbol = None
+            for sym in sorted(asset_by_symbol.keys(), key=len, reverse=True):
+                pat = r"\b" + re.escape(sym) + r"(?:/USDT|-USDT)?\b"
+                if re.search(pat, line, re.IGNORECASE):
+                    symbol = sym.upper()
+                    line = re.sub(pat, " ", line, flags=re.IGNORECASE)
+                    break
+            if not symbol:
+                skipped.append({"description": orig_line[:200], "reason": "Ativo não reconhecido nesta linha."})
+                continue
+
+            nums = re.findall(r"[0-9]+(?:[.,][0-9]+)?", line)
+            if not nums:
+                skipped.append({"description": orig_line[:200], "reason": "Preço alvo não encontrado nesta linha."})
+                continue
+            price = nums[0]
+            line = line.replace(price, " ", 1)
+
+            for filler in ("alvo de compra", "alvo", "preço", "preco", "price", "target", "usd", "usdt", "$", ":", "=", "-"):
+                pat = r"\b" + re.escape(filler) + r"\b" if filler.isalnum() else re.escape(filler)
+                line = re.sub(pat, " ", line, flags=re.IGNORECASE)
+            orientation = " ".join(line.split()).strip().strip("()") or None
+
+            items.append({"symbol": symbol, "price_usd": price, "active": True, "orientation": orientation})
+
+    return normalize_targets({
+        "items": items,
+        "skipped": skipped,
+        "summary": "Processamento local de contingência concluído.",
+    }, assets, targets)

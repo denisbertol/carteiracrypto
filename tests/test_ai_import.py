@@ -7,10 +7,12 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
-from app.routes.ai import get_ai_settings, preview_operations, put_ai_settings, AiSettingsInput
+from app.routes.ai import get_ai_settings, preview_operations, preview_targets, put_ai_settings, test_ai_connection, AiSettingsInput
 from app.services.ai_import import (
     AiImportError,
     GeminiClient,
+    fallback_parse_operations,
+    fallback_parse_targets,
     key_hint,
     normalize_operations,
     normalize_targets,
@@ -24,9 +26,10 @@ SECRET = "AIzaSyTESTKEYVALUE1234567890"
 
 
 class Cursor:
-    def __init__(self, ones=None, rows=None):
+    def __init__(self, ones=None, rows=None, all_sets=None):
         self.ones = list(ones or [])
         self.rows = list(rows or [])
+        self.all_sets = list(all_sets or [])
         self.queries = []
 
     def execute(self, query, params=None):
@@ -36,6 +39,8 @@ class Cursor:
         return self.ones.pop(0) if self.ones else None
 
     def fetchall(self):
+        if self.all_sets:
+            return self.all_sets.pop(0)
         return self.rows
 
 
@@ -141,6 +146,57 @@ class NormalizeTests(unittest.TestCase):
             client.generate("instrução", "material", None, {"type": "OBJECT"})
         self.assertNotIn(SECRET, str(raised.exception))
 
+    def test_gemini_client_detects_http_402_depleted_credits(self):
+        class MockResp:
+            def __init__(self, code, data):
+                self.status_code = code
+                self._data = data
+            def json(self):
+                return self._data
+
+        resp = MockResp(402, {"error": {"code": 402, "message": "Your prepayment credits are depleted."}})
+        with self.assertRaises(AiImportError) as ctx:
+            GeminiClient._raise_for_status(resp)
+        self.assertEqual(ctx.exception.code, "AI_CREDITS_DEPLETED")
+        self.assertIn("créditos", str(ctx.exception).lower())
+
+    def test_fallback_parse_operations_csv_and_text(self):
+        csv_text = "data,tipo,ativo,quantidade,preco,taxa\n2026-10-02 12:00:00,compra,BTC,0.05,65000,1.2\n2026-10-02 12:00:00,deposito,USDT,500,,"
+        res_csv = fallback_parse_operations(csv_text, self.assets)
+        self.assertEqual(len(res_csv["items"]), 2)
+        self.assertTrue(all(it["ready"] for it in res_csv["items"]))
+        kinds = {it["kind"] for it in res_csv["items"]}
+        self.assertEqual(kinds, {"buy", "deposit"})
+        buy = next(it for it in res_csv["items"] if it["kind"] == "buy")
+        self.assertEqual(buy["symbol"], "BTC")
+        self.assertEqual(buy["quantity"], "0.05")
+
+        free_text = "02/10/2026 14:00 Compra 0.5 BTC a 65000 taxa 1.5\nDepósito 1000 USDT"
+        res_text = fallback_parse_operations(free_text, self.assets)
+        self.assertEqual(len(res_text["items"]), 2)
+        self.assertTrue(all(it["ready"] for it in res_text["items"]))
+
+    def test_fallback_parse_targets_csv_and_text(self):
+        target_id = uuid4()
+        targets = [{
+            "id": target_id, "asset_id": self.btc, "kind": "buy",
+            "price_usd": Decimal("78000"), "active": True, "orientation": None, "version": 1,
+        }]
+        csv_text = "ativo,alvo,orientacao\nBTC,82000,comprar abaixo\nUSDT,1,"
+        res_csv = fallback_parse_targets(csv_text, self.assets, targets)
+        ready_csv = [it for it in res_csv["items"] if it["ready"]]
+        self.assertEqual(len(ready_csv), 1)
+        self.assertEqual(ready_csv[0]["symbol"], "BTC")
+        self.assertEqual(ready_csv[0]["price_usd"], "82000")
+        self.assertEqual(ready_csv[0]["orientation"], "comprar abaixo")
+
+        free_text = "BTC 85000\nUSDT 1"
+        res_text = fallback_parse_targets(free_text, self.assets, targets)
+        ready_text = [it for it in res_text["items"] if it["ready"]]
+        self.assertEqual(len(ready_text), 1)
+        self.assertEqual(ready_text[0]["symbol"], "BTC")
+        self.assertEqual(ready_text[0]["price_usd"], "85000")
+
 
 class AiRouteTests(unittest.TestCase):
     def setUp(self):
@@ -149,8 +205,8 @@ class AiRouteTests(unittest.TestCase):
         self.usdt_id = uuid4()
         self.btc_id = uuid4()
 
-    def connection(self, ones, rows=None):
-        cursor = Cursor(ones, rows)
+    def connection(self, ones, rows=None, all_sets=None):
+        cursor = Cursor(ones, rows, all_sets=all_sets)
         return Connection(cursor), cursor
 
     def test_settings_response_never_returns_the_api_key(self):
@@ -210,3 +266,62 @@ class AiRouteTests(unittest.TestCase):
         self.assertEqual(body["items"][0]["asset_id"], str(self.btc_id))
         self.assertNotIn(SECRET, json.dumps(body))
         self.assertEqual(connection.commits, 0)
+
+    def test_preview_operations_fallback_when_gemini_credits_depleted(self):
+        connection, _ = self.connection(
+            [(self.portfolio_id, 3), (self.usdt_id,), (SECRET, "gemini-2.5-flash")],
+            [(self.btc_id, "BTC", "Bitcoin"), (self.usdt_id, "USDT", "Tether")],
+        )
+        def poster(*args, **kwargs):
+            class Resp:
+                status_code = 402
+                def json(self):
+                    return {"error": {"code": 402, "message": "Prepayment credits depleted."}}
+            return Resp()
+
+        with patch("app.routes.ai.get_db_connection", return_value=connection), \
+             patch("app.services.ai_import.httpx.Client") as mock_client:
+            mock_client.return_value.__enter__.return_value.post = poster
+            body = preview_operations(text="Compra 0.1 BTC a 65000", upload=None, user_id=self.user_id)
+            self.assertTrue(body["items"][0]["ready"])
+            self.assertEqual(body["items"][0]["symbol"], "BTC")
+            self.assertIn("contingência local", body["summary"].lower())
+
+    def test_preview_targets_fallback_when_gemini_credits_depleted(self):
+        connection, _ = self.connection(
+            [(self.portfolio_id, 3), (self.usdt_id,), (SECRET, "gemini-2.5-flash")],
+            all_sets=[
+                [(self.btc_id, "BTC", "Bitcoin"), (self.usdt_id, "USDT", "Tether")],
+                [],
+            ],
+        )
+        def poster(*args, **kwargs):
+            class Resp:
+                status_code = 402
+                def json(self):
+                    return {"error": {"code": 402, "message": "Prepayment credits depleted."}}
+            return Resp()
+
+        with patch("app.routes.ai.get_db_connection", return_value=connection), \
+             patch("app.services.ai_import.httpx.Client") as mock_client:
+            mock_client.return_value.__enter__.return_value.post = poster
+            body = preview_targets(text="BTC 85000", upload=None, user_id=self.user_id)
+            self.assertTrue(body["items"][0]["ready"])
+            self.assertEqual(body["items"][0]["symbol"], "BTC")
+            self.assertEqual(body["items"][0]["price_usd"], "85000")
+            self.assertIn("contingência local", body["summary"].lower())
+
+    def test_ai_connection_endpoint(self):
+        connection, _ = self.connection([
+            (self.portfolio_id, 3), (self.usdt_id,), (SECRET, "gemini-2.5-flash"),
+        ])
+        class FakeGemini:
+            def __init__(self, key, model):
+                pass
+            def generate(self, *args, **kwargs):
+                return {"status": "OK"}
+
+        with patch("app.routes.ai.get_db_connection", return_value=connection), \
+             patch("app.routes.ai.GeminiClient", FakeGemini):
+            res = test_ai_connection(self.user_id)
+            self.assertTrue(res["ok"])

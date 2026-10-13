@@ -28,6 +28,37 @@ class MainShellTests(unittest.TestCase):
         self.assertNotIn("$", body)
         self.assertEqual(response.headers["Cache-Control"], "no-store")
 
+    def test_public_home_contains_dormant_post_login_splash_with_video_and_progress(self):
+        request = Request({
+            "type": "http", "method": "GET", "path": "/", "headers": [],
+            "query_string": b"", "server": ("test", 80),
+        })
+        response = home(request)
+        body = response.body.decode("utf-8")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('<body class="has-splash">', body)
+        self.assertIn('<div id="splash"', body)
+        self.assertIn('hidden', body)
+        self.assertIn('abertura_carteiracrypto.mp4', body)
+        self.assertIn('id="splash-progress-bar"', body)
+        self.assertIn('id="splash-status-text"', body)
+        self.assertIn('splash.js', body)
+
+    def test_public_home_contains_mobile_viewport_and_google_login_elements(self):
+        request = Request({
+            "type": "http", "method": "GET", "path": "/", "headers": [],
+            "query_string": b"", "server": ("test", 80),
+        })
+        response = home(request)
+        body = response.body.decode("utf-8")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('viewport-fit=cover', body)
+        self.assertIn('theme-color', body)
+        self.assertIn('id="google-login-btn"', body)
+        self.assertIn('Entrar com o Google', body)
+        self.assertIn('id="login-container"', body)
+        self.assertIn('id="toggle-password"', body)
+
     def test_dashboard_route_has_bearer_dependency_and_anonymous_request_is_rejected(self):
         self.assertIn("/api/v1/dashboard", app.openapi()["paths"])
         self.assertIn("/api/v1/notifications", app.openapi()["paths"])

@@ -128,11 +128,21 @@
     }
     if (!response.ok) {
       const detail = body && body.detail && body.detail.error;
-      const message = detail && typeof detail.message === "string"
-        ? detail.message
-        : response.status === 429
+      let message = detail && typeof detail.message === "string" ? detail.message : "";
+      if (!message && body && body.detail) {
+        if (typeof body.detail === "string") {
+          message = body.detail;
+        } else if (Array.isArray(body.detail) && body.detail.length > 0 && body.detail[0].msg) {
+          message = body.detail[0].msg;
+        }
+      }
+      if (!message) {
+        message = response.status === 429
           ? "Limite temporário atingido. Aguarde antes de tentar novamente."
-          : "Não foi possível concluir a solicitação.";
+          : response.status === 503
+            ? "Serviço temporariamente indisponível. Tente novamente."
+            : "Não foi possível concluir a solicitação.";
+      }
       const error = new Error(message);
       error.status = response.status;
       error.code = detail && detail.code;
@@ -950,19 +960,41 @@
     if (version === loadVersion && window.AppAuth.hasSession()) await load();
   }
 
-  async function load() {
+  async function load(options = {}) {
     if (!window.AppAuth || !window.AppAuth.hasSession()) return;
+    const isPostLogin = Boolean(options && options.isPostLogin);
     const version = ++loadVersion;
     const status = document.getElementById("session-status");
     ensureShell();
     root.classList.add("is-loading");
     if (status) status.textContent = "Carregando sua carteira…";
+
+    if (isPostLogin && window.SplashLoader) {
+      window.SplashLoader.start();
+      window.SplashLoader.setProgress(20, "Conectando à sua carteira…");
+    }
+
     try {
+      if (isPostLogin && window.SplashLoader) {
+        window.SplashLoader.setProgress(45, "Carregando ativos e posições…");
+      }
       // This authenticated read creates an empty portfolio on first login; the
       // following aggregate read is the single consistent financial snapshot.
       await request("/api/v1/assets");
+
+      if (isPostLogin && window.SplashLoader) {
+        window.SplashLoader.setProgress(70, "Consultando cotações e rentabilidade…");
+      }
       const result = await request("/api/v1/dashboard");
-      if (version !== loadVersion || !window.AppAuth.hasSession()) return;
+      if (version !== loadVersion || !window.AppAuth.hasSession()) {
+        if (isPostLogin && window.SplashLoader) window.SplashLoader.close();
+        return;
+      }
+
+      if (isPostLogin && window.SplashLoader) {
+        window.SplashLoader.setProgress(90, "Consolidando métricas e alocação…");
+      }
+
       const previousRevision = snapshot && snapshot.portfolio_revision;
       snapshot = result.body;
       applyColumnPreference(snapshot);
@@ -974,9 +1006,20 @@
         window.Operations.invalidate(activeTab === "lancamentos" ? shell.panels.lancamentos : null);
       }
       if (status) status.textContent = "";
+
+      if (isPostLogin && window.SplashLoader) {
+        window.SplashLoader.finish();
+      }
+
       runBackfill();
     } catch (error) {
-      if (version !== loadVersion || !window.AppAuth.hasSession()) return;
+      if (version !== loadVersion || !window.AppAuth.hasSession()) {
+        if (isPostLogin && window.SplashLoader) window.SplashLoader.close();
+        return;
+      }
+      if (isPostLogin && window.SplashLoader) {
+        window.SplashLoader.error("Erro ao carregar a carteira.");
+      }
       shell.panels.resumo.replaceChildren(element("p", "inline-error", error.message || "Não foi possível carregar a carteira."));
       if (status) status.textContent = "Não foi possível carregar os dados. Tente atualizar o painel.";
     } finally {
@@ -1018,9 +1061,14 @@
     closePopover();
     if (chartObserver) chartObserver.disconnect();
     chartObserver = null;
+    if (window.SplashLoader && typeof window.SplashLoader.close === "function") {
+      window.SplashLoader.close();
+    }
   }
 
-  document.addEventListener("auth:authenticated", load);
+  document.addEventListener("auth:authenticated", () => {
+    load({ isPostLogin: true });
+  });
   document.addEventListener("auth:signed-out", () => { reset(); root.replaceChildren(); });
   document.addEventListener("auth:expired", reset);
 

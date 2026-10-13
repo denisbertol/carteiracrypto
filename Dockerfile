@@ -9,8 +9,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml ./
-RUN pip install --no-cache-dir --user .
+COPY requirements.txt ./
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+COPY pyproject.toml README.md ./
+COPY app/ ./app/
+RUN pip install --no-cache-dir --user --no-deps .
 
 # Estágio 2: Runtime enxuto e seguro
 FROM python:3.12-slim AS runner
@@ -30,14 +34,18 @@ RUN groupadd -g 10001 appgroup && \
 # Copia dependências instaladas do builder
 COPY --from=builder --chown=appuser:appgroup /root/.local /home/appuser/.local
 
-# Copia código-fonte da aplicação
+# Copia código-fonte, scripts e migrações da aplicação
 COPY --chown=appuser:appgroup app/ ./app/
 COPY --chown=appuser:appgroup migrations/ ./migrations/
-COPY --chown=appuser:appgroup pyproject.toml ./
+COPY --chown=appuser:appgroup scripts/ ./scripts/
+COPY --chown=appuser:appgroup pyproject.toml README.md requirements.txt ./
+
+# Permissão de execução para scripts
+RUN chmod +x ./scripts/*.sh 2>/dev/null || true
 
 USER appuser
 
 EXPOSE 8000
 
-# Execução com 1 worker para consumo mínimo de memória (< 128 MB)
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Executa migrações idempotentes e inicializa o Uvicorn
+CMD ["sh", "/app/scripts/entrypoint.sh"]

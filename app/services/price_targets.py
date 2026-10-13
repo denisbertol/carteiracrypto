@@ -354,6 +354,50 @@ class PriceTargetService:
         self._save_receipt(cur, portfolio_id, idempotency_key, request_hash, 200, new)
         return new, False
 
+    def delete_target(
+        self,
+        cur: Any,
+        portfolio_id: UUID,
+        actor_id: UUID,
+        target_id: UUID,
+        *,
+        expected_version: int | None = None,
+        idempotency_key: UUID | None = None,
+    ) -> tuple[dict[str, Any], bool]:
+        path = f"/api/v1/price-targets/{target_id}"
+        request_hash = compute_request_hash(
+            "DELETE", path, {"expected_version": expected_version}, expected_version or 1
+        )
+        self._lock_portfolio(cur, portfolio_id)
+        if idempotency_key is not None:
+            previous = self._find_receipt(cur, portfolio_id, idempotency_key, request_hash)
+            if previous:
+                return previous[0], True
+
+        cur.execute(
+            f"SELECT {self.TARGET_COLUMNS} FROM portfolio_private.price_targets "
+            "WHERE portfolio_id = %s AND id = %s FOR UPDATE;",
+            (str(portfolio_id), str(target_id)),
+        )
+        old_row = cur.fetchone()
+        if old_row is None:
+            raise LookupError("Alvo não encontrado.")
+        old = _target_body(old_row)
+        if expected_version is not None and old["version"] != expected_version:
+            raise RevisionConflictError(f"Conflito de versão; versão atual: {old['version']}.")
+
+        cur.execute(
+            "DELETE FROM portfolio_private.price_targets "
+            "WHERE portfolio_id = %s AND id = %s;",
+            (str(portfolio_id), str(target_id)),
+        )
+        result = {"id": str(target_id), "deleted": True}
+        self._audit(cur, portfolio_id, "target", target_id, actor_id, old, result)
+        if idempotency_key is not None:
+            self._save_receipt(cur, portfolio_id, idempotency_key, request_hash, 200, result)
+        return result, False
+
+
     def update_settings(
         self,
         cur: Any,

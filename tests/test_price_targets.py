@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import uuid4
 
-from app.services.portfolio import IdempotencyConflictError
+from app.services.portfolio import IdempotencyConflictError, RevisionConflictError
 from app.services.price_targets import (
     DEFAULT_PROXIMITY_PERCENT,
     PriceTargetService,
@@ -16,7 +16,7 @@ from app.services.price_targets import (
 class TargetCursor:
     def __init__(self, asset_id):
         self.asset_id = asset_id
-        self.receipt = None
+        self.receipts = {}
         self.target = None
         self.result = None
         self.target_inserts = 0
@@ -28,7 +28,8 @@ class TargetCursor:
         if sql.startswith("select pg_advisory_xact_lock"):
             self.result = None
         elif "from portfolio_private.mutation_receipts" in sql:
-            self.result = self.receipt
+            key = str(params[1])
+            self.result = self.receipts.get(key)
         elif "select id from portfolio_private.assets" in sql:
             self.result = (self.asset_id,) if params[1] == str(self.asset_id) else None
         elif sql.startswith("insert into portfolio_private.price_targets"):
@@ -40,10 +41,14 @@ class TargetCursor:
             self.result = None
         elif sql.startswith("select id, asset_id, kind, price_usd"):
             self.result = self.target
+        elif sql.startswith("delete from portfolio_private.price_targets"):
+            self.target = None
+            self.result = None
         elif sql.startswith("insert into portfolio_private.monitoring_changes"):
             self.result = None
         elif sql.startswith("insert into portfolio_private.mutation_receipts"):
-            self.receipt = (params[2], params[3], json.loads(params[4]))
+            key = str(params[1])
+            self.receipts[key] = (params[2], params[3], json.loads(params[4]))
             self.result = None
         else:
             raise AssertionError(f"SQL não esperado: {sql}")
@@ -102,6 +107,50 @@ class PriceTargetServiceTests(unittest.TestCase):
                 cur, portfolio_id, owner_id, **{**base, "price_usd": Decimal("91")}
             )
         self.assertEqual(cur.target_inserts, 1)
+
+    def test_delete_target_success_and_idempotent_replay(self):
+        asset_id, portfolio_id, owner_id, idempotency_key = uuid4(), uuid4(), uuid4(), uuid4()
+        cur = TargetCursor(asset_id)
+        service = PriceTargetService()
+        target, _ = service.create_target(
+            cur, portfolio_id, owner_id,
+            asset_id=asset_id, kind="buy", price_usd=Decimal("50000"),
+            active=True, orientation=None, idempotency_key=uuid4(),
+        )
+        target_id = target["id"]
+        result, replayed = service.delete_target(
+            cur, portfolio_id, owner_id, target_id,
+            expected_version=1, idempotency_key=idempotency_key,
+        )
+        self.assertFalse(replayed)
+        self.assertTrue(result["deleted"])
+        self.assertEqual(result["id"], str(target_id))
+
+        # Replay with same idempotency key
+        replayed_result, replayed_flag = service.delete_target(
+            cur, portfolio_id, owner_id, target_id,
+            expected_version=1, idempotency_key=idempotency_key,
+        )
+        self.assertTrue(replayed_flag)
+        self.assertEqual(replayed_result, result)
+
+    def test_delete_target_not_found(self):
+        cur = TargetCursor(uuid4())
+        service = PriceTargetService()
+        with self.assertRaises(LookupError):
+            service.delete_target(cur, uuid4(), uuid4(), uuid4())
+
+    def test_delete_target_version_conflict(self):
+        asset_id, portfolio_id, owner_id = uuid4(), uuid4(), uuid4()
+        cur = TargetCursor(asset_id)
+        service = PriceTargetService()
+        target, _ = service.create_target(
+            cur, portfolio_id, owner_id,
+            asset_id=asset_id, kind="buy", price_usd=Decimal("50000"),
+            active=True, orientation=None, idempotency_key=uuid4(),
+        )
+        with self.assertRaises(RevisionConflictError):
+            service.delete_target(cur, portfolio_id, owner_id, target["id"], expected_version=99)
 
 
 if __name__ == "__main__":

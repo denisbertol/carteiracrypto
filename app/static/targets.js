@@ -10,6 +10,7 @@
   let editDialog = null;
   let createDialog = null;
   let proximityDialog = null;
+  let deleteDialog = null;
   let targetSort = { key: "asset", dir: "asc" };
   let targetsCollapsed = false;
 
@@ -122,8 +123,8 @@
 
   function menuList(items) {
     const list = node("div", "menu-list");
-    items.forEach(([label, action]) => {
-      const item = node("button", "menu-item", label);
+    items.forEach(([label, action, className]) => {
+      const item = node("button", `menu-item${className ? ` ${className}` : ""}`, label);
       item.type = "button";
       item.setAttribute("role", "menuitem");
       item.addEventListener("click", () => { closePopover(); action(); });
@@ -174,7 +175,16 @@
     const enabledLabel = node("label", "checkbox-field");
     enabledLabel.append(enabled, node("span", "", "Alvo ativo"));
     const actions = node("div", "modal-actions");
-    actions.append(button("Salvar alterações", "btn btn-primary"));
+    const deleteBtn = node("button", "btn btn-outline btn-danger", "Excluir alvo");
+    deleteBtn.type = "button";
+    deleteBtn.addEventListener("click", () => {
+      const currentTarget = targets.find((item) => item.id === form.dataset.targetId);
+      if (currentTarget) {
+        dialog.close();
+        openDelete(currentTarget);
+      }
+    });
+    actions.append(deleteBtn, button("Salvar alterações", "btn btn-primary"));
     form.append(
       head,
       node("p", "muted target-dialog-asset", ""),
@@ -226,6 +236,99 @@
     });
     await load();
     document.dispatchEvent(new Event("monitoring:configuration-changed"));
+    if (window.Portfolio && typeof window.Portfolio.load === "function") window.Portfolio.load();
+  }
+
+  function ensureDeleteDialog() {
+    if (deleteDialog) return deleteDialog;
+    const dialog = node("dialog", "modal");
+    dialog.setAttribute("aria-labelledby", "target-delete-title");
+    const form = node("form", "modal-form");
+    form.method = "dialog";
+    const head = node("div", "modal-head");
+    const title = node("h2", "section-title", "Excluir alvo");
+    title.id = "target-delete-title";
+    const close = node("button", "icon-button", "✕");
+    close.type = "button";
+    close.setAttribute("aria-label", "Fechar");
+    close.addEventListener("click", () => dialog.close());
+    head.append(title, close);
+
+    const message = node("p", "target-delete-message", "");
+    const warning = node("p", "muted", "Esta ação remove o alvo do monitoramento e não pode ser desfeita.");
+
+    const actions = node("div", "modal-actions");
+    const cancelBtn = node("button", "btn btn-outline", "Cancelar");
+    cancelBtn.type = "button";
+    cancelBtn.addEventListener("click", () => dialog.close());
+
+    const confirmBtn = node("button", "btn btn-danger", "Excluir alvo");
+    confirmBtn.type = "button";
+    confirmBtn.dataset.confirmDelete = "true";
+    confirmBtn.addEventListener("click", async () => {
+      const targetId = dialog.dataset.targetId;
+      const version = dialog.dataset.version;
+      if (!targetId) return;
+      confirmBtn.disabled = true;
+      cancelBtn.disabled = true;
+      statusLine(form, "Excluindo alvo…");
+      try {
+        await deleteTarget(targetId, version);
+        dialog.close();
+      } catch (error) {
+        statusLine(form, error.message || "Não foi possível excluir o alvo.", true);
+        confirmBtn.disabled = false;
+        cancelBtn.disabled = false;
+      }
+    });
+
+    actions.append(cancelBtn, confirmBtn);
+
+    const status = node("p", "form-status", "");
+    status.dataset.formStatus = "true";
+    status.hidden = true;
+
+    form.append(head, message, warning, actions, status);
+    dialog.append(form);
+    document.body.append(dialog);
+    deleteDialog = dialog;
+    return dialog;
+  }
+
+  function openDelete(target) {
+    const dialog = ensureDeleteDialog();
+    const form = dialog.querySelector("form");
+    const asset = assetOf(target);
+    const assetName = asset ? `${asset.symbol} · ${asset.name}` : "este ativo";
+    dialog.dataset.targetId = target.id;
+    dialog.dataset.version = String(target.version);
+
+    const message = dialog.querySelector(".target-delete-message");
+    if (message) {
+      message.textContent = `Deseja realmente excluir o alvo de ${assetName} (${formatPrice(target.price_usd)})?`;
+    }
+
+    const confirmBtn = dialog.querySelector('[data-confirm-delete="true"]');
+    if (confirmBtn) confirmBtn.disabled = false;
+    const cancelBtn = dialog.querySelector(".btn-outline");
+    if (cancelBtn) cancelBtn.disabled = false;
+
+    statusLine(form, "");
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+  }
+
+  async function deleteTarget(targetId, version) {
+    await window.AppUI.request(`/api/v1/price-targets/${targetId}`, {
+      method: "DELETE",
+      headers: {
+        "If-Match": String(version),
+        "Idempotency-Key": idempotencyKey(),
+      },
+    });
+    await load();
+    document.dispatchEvent(new Event("monitoring:configuration-changed"));
+    if (window.Portfolio && typeof window.Portfolio.load === "function") window.Portfolio.load();
   }
 
   const NEW_ASSET = "__new__";
@@ -430,6 +533,7 @@
             status.classList.add("form-error");
           }
         })],
+        ["Excluir", () => openDelete(target), "menu-item-danger"],
       ])));
       options.append(trigger);
       row.append(options);
@@ -684,6 +788,7 @@
     if (editDialog && editDialog.open) editDialog.close();
     if (createDialog && createDialog.open) createDialog.close();
     if (proximityDialog && proximityDialog.open) proximityDialog.close();
+    if (deleteDialog && deleteDialog.open) deleteDialog.close();
     assets = [];
     targets = [];
     settings = null;

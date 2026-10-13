@@ -14,6 +14,8 @@ from app.services.ai_import import (
     TARGET_SCHEMA,
     AiImportError,
     GeminiClient,
+    fallback_parse_operations,
+    fallback_parse_targets,
     key_hint,
     normalize_operations,
     normalize_targets,
@@ -27,6 +29,7 @@ router = APIRouter(prefix="/api/v1/ai", tags=["ia"])
 
 MAX_UPLOAD_BYTES = 4 * 1024 * 1024
 MAX_TEXT_CHARS = 80_000
+HTTP_422 = getattr(status, "HTTP_422_UNPROCESSABLE_CONTENT", 422)
 
 
 class AiSettingsInput(BaseModel):
@@ -94,25 +97,25 @@ def _buy_targets(cur: Any, portfolio_id: UUID) -> list[dict[str, Any]]:
 def _material(text: str, upload: UploadFile | None) -> tuple[str, tuple[str, bytes] | None]:
     pasted = (text or "").strip()
     if len(pasted) > MAX_TEXT_CHARS:
-        raise _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "MATERIAL_TOO_LARGE", "O texto passou de 80 mil caracteres.")
+        raise _error(HTTP_422, "MATERIAL_TOO_LARGE", "O texto passou de 80 mil caracteres.")
     image = None
     if upload is not None and upload.filename:
         data = upload.file.read(MAX_UPLOAD_BYTES + 1)
         if len(data) > MAX_UPLOAD_BYTES:
-            raise _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "MATERIAL_TOO_LARGE", "O arquivo passou de 4 MB.")
+            raise _error(HTTP_422, "MATERIAL_TOO_LARGE", "O arquivo passou de 4 MB.")
         mime = sniff_image(data)
         if mime:
             image = (mime, data)
         else:
             decoded = data.decode("utf-8", errors="replace").strip()
             if not decoded:
-                raise _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "MATERIAL_EMPTY", "O arquivo não tem texto legível.")
+                raise _error(HTTP_422, "MATERIAL_EMPTY", "O arquivo não tem texto legível.")
             pasted = f"{pasted}\n\n{decoded}".strip() if pasted else decoded
             if len(pasted) > MAX_TEXT_CHARS:
-                raise _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "MATERIAL_TOO_LARGE", "O texto passou de 80 mil caracteres.")
+                raise _error(HTTP_422, "MATERIAL_TOO_LARGE", "O texto passou de 80 mil caracteres.")
     if not pasted and image is None:
         raise _error(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            HTTP_422,
             "MATERIAL_EMPTY",
             "Cole um texto ou envie um CSV, uma tabela ou uma imagem.",
         )
@@ -123,7 +126,7 @@ def _configured_context(cur: Any, portfolio_id: UUID) -> tuple[str, str, list[di
     api_key, model = _settings_row(cur, portfolio_id)
     if not api_key:
         raise _error(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            HTTP_422,
             "AI_NOT_CONFIGURED",
             "Salve a chave do Gemini na engrenagem de IA antes de ler o material.",
         )
@@ -134,9 +137,12 @@ def _generate(api_key: str, model: str, instruction: str, schema: dict[str, Any]
     try:
         return GeminiClient(api_key, validate_model(model)).generate(instruction, material, image, schema)
     except AiImportError as exc:
-        http_status = status.HTTP_422_UNPROCESSABLE_ENTITY if exc.code in {"AI_UNREADABLE", "AI_REJECTED", "INVALID_MODEL"} else status.HTTP_502_BAD_GATEWAY
-        if exc.code == "AI_BUSY":
+        if exc.code in {"AI_UNREADABLE", "AI_REJECTED", "INVALID_MODEL", "AI_CREDITS_DEPLETED"}:
+            http_status = HTTP_422
+        elif exc.code == "AI_BUSY":
             http_status = status.HTTP_429_TOO_MANY_REQUESTS
+        else:
+            http_status = status.HTTP_502_BAD_GATEWAY
         raise _error(http_status, exc.code, str(exc))
 
 
@@ -154,10 +160,10 @@ def put_ai_settings(body: AiSettingsInput, user_id: UUID = Depends(get_current_u
     try:
         model = validate_model(body.model)
     except AiImportError as exc:
-        raise _error(status.HTTP_422_UNPROCESSABLE_ENTITY, exc.code, str(exc))
+        raise _error(HTTP_422, exc.code, str(exc))
     replacement = (body.api_key or "").strip()
     if replacement and len(replacement) < 20:
-        raise _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "INVALID_API_KEY", "A chave informada está curta demais.")
+        raise _error(HTTP_422, "INVALID_API_KEY", "A chave informada está curta demais.")
     with get_db_connection(user_id) as conn:
         with conn.cursor() as cur:
             portfolio_id, _, _ = portfolio_service.get_or_create_portfolio(cur, user_id)
@@ -181,6 +187,32 @@ def put_ai_settings(body: AiSettingsInput, user_id: UUID = Depends(get_current_u
     return _public_settings(api_key, stored_model)
 
 
+@router.post("/test")
+def test_ai_connection(user_id: UUID = Depends(get_current_user_id)):
+    with get_db_connection(user_id) as conn:
+        with conn.cursor() as cur:
+            portfolio_id, _, _ = portfolio_service.get_or_create_portfolio(cur, user_id)
+            api_key, model = _settings_row(cur, portfolio_id)
+    if not api_key:
+        raise _error(HTTP_422, "AI_NOT_CONFIGURED", "Nenhuma chave da API Gemini está configurada.")
+    try:
+        GeminiClient(api_key, validate_model(model)).generate(
+            "Responda apenas com a palavra OK.",
+            "",
+            None,
+            {"type": "OBJECT", "properties": {"status": {"type": "STRING"}}},
+        )
+        return {"ok": True, "message": "Conexão com o Gemini realizada com sucesso!"}
+    except AiImportError as exc:
+        if exc.code in {"AI_UNREADABLE", "AI_REJECTED", "INVALID_MODEL", "AI_CREDITS_DEPLETED"}:
+            http_status = HTTP_422
+        elif exc.code == "AI_BUSY":
+            http_status = status.HTTP_429_TOO_MANY_REQUESTS
+        else:
+            http_status = status.HTTP_502_BAD_GATEWAY
+        raise _error(http_status, exc.code, str(exc))
+
+
 @router.post("/operations/preview")
 def preview_operations(
     text: str = Form(""),
@@ -192,8 +224,23 @@ def preview_operations(
         with conn.cursor() as cur:
             portfolio_id, _, _ = portfolio_service.get_or_create_portfolio(cur, user_id)
             api_key, model, assets = _configured_context(cur, portfolio_id)
-    payload = _generate(api_key, model, operation_instruction(assets), OPERATION_SCHEMA, material, image)
-    return normalize_operations(payload, assets)
+    try:
+        payload = _generate(api_key, model, operation_instruction(assets), OPERATION_SCHEMA, material, image)
+        return normalize_operations(payload, assets)
+    except HTTPException as exc:
+        if image is None and material:
+            fallback = fallback_parse_operations(material, assets)
+            ready_count = sum(1 for item in fallback.get("items", []) if item.get("ready"))
+            if ready_count > 0:
+                err_detail = exc.detail if isinstance(exc.detail, dict) else {}
+                err_info = err_detail.get("error", {}) if isinstance(err_detail, dict) else {}
+                reason = err_info.get("message") if isinstance(err_info, dict) else str(exc.detail)
+                fallback["summary"] = (
+                    f"Modo de contingência local: {ready_count} lançamento(s) lidos diretamente. "
+                    f"(Gemini: {reason}). Revise os dados antes de confirmar."
+                )
+                return fallback
+        raise
 
 
 @router.post("/targets/preview")
@@ -208,5 +255,20 @@ def preview_targets(
             portfolio_id, _, _ = portfolio_service.get_or_create_portfolio(cur, user_id)
             api_key, model, assets = _configured_context(cur, portfolio_id)
             targets = _buy_targets(cur, portfolio_id)
-    payload = _generate(api_key, model, target_instruction(assets), TARGET_SCHEMA, material, image)
-    return normalize_targets(payload, assets, targets)
+    try:
+        payload = _generate(api_key, model, target_instruction(assets), TARGET_SCHEMA, material, image)
+        return normalize_targets(payload, assets, targets)
+    except HTTPException as exc:
+        if image is None and material:
+            fallback = fallback_parse_targets(material, assets, targets)
+            ready_count = sum(1 for item in fallback.get("items", []) if item.get("ready"))
+            if ready_count > 0:
+                err_detail = exc.detail if isinstance(exc.detail, dict) else {}
+                err_info = err_detail.get("error", {}) if isinstance(err_detail, dict) else {}
+                reason = err_info.get("message") if isinstance(err_info, dict) else str(exc.detail)
+                fallback["summary"] = (
+                    f"Modo de contingência local: {ready_count} alvo(s) lidos diretamente. "
+                    f"(Gemini: {reason}). Revise os dados antes de confirmar."
+                )
+                return fallback
+        raise

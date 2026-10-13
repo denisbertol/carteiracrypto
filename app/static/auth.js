@@ -4,11 +4,14 @@
   const emailInput = document.getElementById("login-email");
   const passwordInput = document.getElementById("login-password");
   const loginForm = document.getElementById("login-form");
+  const loginContainer = document.getElementById("login-container");
   if (!emailInput || !passwordInput || !loginForm) return;
 
   const statusText = document.getElementById("session-status");
   const errorText = document.getElementById("auth-error");
   const logoutButton = document.getElementById("logout-button");
+  const googleBtn = document.getElementById("google-login-btn");
+  const togglePasswordBtn = document.getElementById("toggle-password");
   const appContent = document.getElementById("app-content");
   const supabaseUrl = document.querySelector('meta[name="supabase-url"]')?.content?.replace(/\/$/, "");
   const publishableKey = document.querySelector('meta[name="supabase-publishable-key"]')?.content;
@@ -38,10 +41,14 @@
     if (window.Portfolio && typeof window.Portfolio.clear === "function") {
       window.Portfolio.clear();
     }
+    if (window.SplashLoader && typeof window.SplashLoader.close === "function") {
+      window.SplashLoader.close();
+    }
     if (appContent) appContent.replaceChildren();
   }
 
   function renderSignedOut(message) {
+    if (loginContainer) loginContainer.hidden = false;
     loginForm.hidden = false;
     if (logoutButton) logoutButton.hidden = true;
     if (statusText) statusText.textContent = message || "Entre para consultar sua carteira.";
@@ -195,6 +202,12 @@
       errorText.hidden = true;
       errorText.textContent = "";
     }
+    const submitBtn = loginForm.querySelector('button[type="submit"]');
+    const originalBtnText = submitBtn ? submitBtn.textContent : "Entrar";
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Entrando…";
+    }
     session.generation += 1;
     const generation = session.generation;
     session.tokens = null;
@@ -205,7 +218,14 @@
     try {
       const payload = await authRequest("token?grant_type=password", { email, password });
       passwordInput.value = "";
-      if (!saveTokens(payload, generation)) return;
+      if (!saveTokens(payload, generation)) {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = originalBtnText;
+        }
+        return;
+      }
+      if (loginContainer) loginContainer.hidden = true;
       loginForm.hidden = true;
       if (logoutButton) logoutButton.hidden = false;
       if (statusText) statusText.textContent = "Sessão autenticada.";
@@ -213,6 +233,10 @@
       notify("auth:authenticated");
     } catch (_error) {
       passwordInput.value = "";
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalBtnText;
+      }
       if (generation !== session.generation) return;
       if (errorText) {
         errorText.textContent = "Não foi possível entrar. Confira suas credenciais e tente novamente.";
@@ -221,10 +245,88 @@
     }
   }
 
+  function signInWithGoogle() {
+    if (!supabaseUrl || !publishableKey) {
+      if (errorText) {
+        errorText.textContent = "Autenticação não configurada.";
+        errorText.hidden = false;
+      }
+      return;
+    }
+    if (googleBtn) {
+      googleBtn.disabled = true;
+      googleBtn.classList.add("is-loading");
+    }
+    const redirectTo = `${window.location.origin}${window.location.pathname}`;
+    const url = `${supabaseUrl}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}`;
+    window.location.assign(url);
+  }
+
+  function checkUrlSession() {
+    const hash = window.location.hash ? window.location.hash.substring(1) : "";
+    const search = window.location.search ? window.location.search.substring(1) : "";
+    if (!hash && !search) return false;
+
+    const params = new URLSearchParams(hash || search);
+    const accessToken = params.get("access_token");
+    const refreshToken = params.get("refresh_token");
+    const expiresIn = params.get("expires_in");
+    const errorParam = params.get("error");
+    const errorDesc = params.get("error_description");
+
+    if (errorParam || errorDesc) {
+      window.history.replaceState(null, document.title, window.location.pathname);
+      if (errorText) {
+        const desc = errorDesc ? decodeURIComponent(errorDesc).replace(/\+/g, " ") : "Falha na autenticação com o Google.";
+        errorText.textContent = desc;
+        errorText.hidden = false;
+      }
+      return false;
+    }
+
+    if (accessToken && refreshToken) {
+      window.history.replaceState(null, document.title, window.location.pathname);
+      session.generation += 1;
+      const generation = session.generation;
+      const payload = {
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        expires_in: expiresIn ? Number(expiresIn) : 3600,
+      };
+      if (saveTokens(payload, generation)) {
+        if (loginContainer) loginContainer.hidden = true;
+        loginForm.hidden = true;
+        if (logoutButton) logoutButton.hidden = false;
+        if (statusText) statusText.textContent = "Sessão autenticada.";
+        clearPrivateState();
+        notify("auth:authenticated");
+        return true;
+      }
+    }
+    return false;
+  }
+
   loginForm.addEventListener("submit", (event) => {
     event.preventDefault();
     signIn(emailInput.value.trim(), passwordInput.value);
   });
+
+  if (googleBtn) {
+    googleBtn.addEventListener("click", () => signInWithGoogle());
+  }
+
+  if (togglePasswordBtn && passwordInput) {
+    togglePasswordBtn.addEventListener("click", () => {
+      const isPassword = passwordInput.type === "password";
+      passwordInput.type = isPassword ? "text" : "password";
+      const eyeShow = togglePasswordBtn.querySelector(".eye-show");
+      const eyeHide = togglePasswordBtn.querySelector(".eye-hide");
+      if (eyeShow && eyeHide) {
+        eyeShow.hidden = isPassword;
+        eyeHide.hidden = !isPassword;
+      }
+    });
+  }
 
   const devLogin = document.getElementById("dev-login");
   if (devLogin) {
@@ -234,11 +336,16 @@
   }
 
   if (logoutButton) logoutButton.addEventListener("click", () => signOut());
-  renderSignedOut();
+
+  const hasUrlSession = checkUrlSession();
+  if (!hasUrlSession) {
+    renderSignedOut();
+  }
 
   window.AppAuth = Object.freeze({
     fetch: authenticatedFetch,
     logout: signOut,
     hasSession: () => session.tokens !== null,
+    signInWithGoogle,
   });
 })();
