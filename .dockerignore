@@ -1,0 +1,16 @@
+.git
+.github
+.gitignore
+.env
+.env.*
+.reversa
+_reversa_*
+tests/
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.vscode
+.idea
+README.md

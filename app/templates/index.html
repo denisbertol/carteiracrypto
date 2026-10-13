@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="no-referrer">
+  <meta name="supabase-url" content="{{ supabase_url }}">
+  <meta name="supabase-publishable-key" content="{{ supabase_publishable_key }}">
+  <title>Carteira Crypto</title>
+  <link rel="icon" href="/static/app-icon.png?v={{ asset_version }}" type="image/png">
+  <link rel="apple-touch-icon" href="/static/app-icon.png?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/style.css?v={{ asset_version }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <div class="brand">
+        <img class="brand-mark" src="/static/app-icon.png?v={{ asset_version }}" alt="">
+        <div>
+          <h1>Carteira Crypto</h1>
+          <p class="muted brand-subtitle">Carteira, alocação e monitoramento de preços</p>
+        </div>
+      </div>
+      <button id="logout-button" class="btn btn-ghost" type="button" hidden>Sair</button>
+    </div>
+  </header>
+  <main id="app-shell" class="container">
+    <p id="session-status" class="session-status" role="status">Entre para consultar sua carteira.</p>
+    <form id="login-form" class="card login-form" autocomplete="on">
+      <label for="login-email">E-mail</label>
+      <input id="login-email" name="email" type="email" autocomplete="username" required>
+      <label for="login-password">Senha</label>
+      <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+      <button class="btn btn-primary" type="submit">Entrar</button>
+      {% if dev_login %}
+      <button id="dev-login" class="btn btn-ghost" type="button" data-email="{{ dev_login.email }}" data-password="{{ dev_login.password }}">Entrar como Denis (dev)</button>
+      {% endif %}
+      <p id="auth-error" class="form-error" role="alert" hidden></p>
+    </form>
+    <section id="app-content" aria-live="off"></section>
+    <noscript>Ative JavaScript para acessar sua carteira.</noscript>
+  </main>
+  <script src="/static/auth.js?v={{ asset_version }}" defer></script>
+  <script src="/static/charts.js?v={{ asset_version }}" defer></script>
+  <script src="/static/portfolio.js?v={{ asset_version }}" defer></script>
+  <script src="/static/operations.js?v={{ asset_version }}" defer></script>
+  <script src="/static/targets.js?v={{ asset_version }}" defer></script>
+  <script src="/static/ai.js?v={{ asset_version }}" defer></script>
+  <script src="/static/monitoring.js?v={{ asset_version }}" defer></script>
+</body>
+</html>

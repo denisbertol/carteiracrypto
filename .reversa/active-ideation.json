@@ -1,0 +1,9 @@
+{
+  "session-dir": "_reversa_sdd/brainstorms/001-carteira-crypto",
+  "session-id": "001",
+  "short-name": "carteira-crypto",
+  "idea": "Quero criar o \"carteira crypto\" para registrar ativos, atualizar o preço médio ponderado e gerenciar metas de realização e compra. Quero incluir os alvos no meu gerenciador e ser notificado assim que estiver próximo. A atualização das cotações podem ser feitas em intervalos suportados por apis externas, gratuitas.",
+  "context": "greenfield",
+  "started-at": "2026-09-27T17:04:05.6968647-03:00",
+  "current-stage": "done"
+}

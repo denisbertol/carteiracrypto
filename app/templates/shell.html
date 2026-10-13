@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="no-referrer">
+  <meta name="supabase-url" content="{{ supabase_url }}">
+  <meta name="supabase-publishable-key" content="{{ supabase_publishable_key }}">
+  <title>Carteira Crypto</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main id="app-shell" class="container">
+    <header><h1>Carteira Crypto</h1></header>
+    <p id="session-status" role="status">Entre para consultar sua carteira.</p>
+    <form id="login-form" class="card login-form" autocomplete="on">
+      <label for="login-email">E-mail</label>
+      <input id="login-email" name="email" type="email" autocomplete="username" required>
+      <label for="login-password">Senha</label>
+      <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+      <button class="btn btn-primary" type="submit">Entrar</button>
+      <p id="auth-error" role="alert" hidden></p>
+    </form>
+    <button id="logout-button" class="btn btn-secondary" type="button" hidden>Sair</button>
+    <section id="app-content" aria-live="polite"></section>
+  </main>
+  <script src="/static/auth.js" defer></script>
+</body>
+</html>
