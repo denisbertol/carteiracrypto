@@ -11,7 +11,56 @@
   <link rel="apple-touch-icon" href="/static/app-icon.png?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/style.css?v={{ asset_version }}">
 </head>
-<body>
+<body class="has-splash">
+  <div id="splash" class="splash" role="dialog" aria-modal="true" aria-label="Abertura da Carteira Crypto">
+    <video id="splash-video" class="splash-video" autoplay playsinline preload="auto" src="/static/abertura_carteiracrypto.mp4?v={{ asset_version }}"></video>
+    <button id="splash-skip" class="splash-skip" type="button">Pular</button>
+    <noscript><style>#splash{display:none}body.has-splash{overflow:auto}</style></noscript>
+  </div>
+  <script>
+    (function () {
+      var splash = document.getElementById("splash");
+      var video = document.getElementById("splash-video");
+      var skip = document.getElementById("splash-skip");
+      if (!splash || !video || !skip) return;
+      var closed = false;
+      function closeSplash() {
+        if (closed) return;
+        closed = true;
+        document.body.classList.remove("has-splash");
+        splash.classList.add("is-leaving");
+        splash.setAttribute("aria-hidden", "true");
+        window.setTimeout(function () { splash.remove(); }, 450);
+      }
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        splash.remove();
+        document.body.classList.remove("has-splash");
+        return;
+      }
+      skip.addEventListener("click", closeSplash);
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") closeSplash();
+      });
+      video.addEventListener("ended", closeSplash);
+      video.addEventListener("error", closeSplash);
+      video.addEventListener("playing", function () {
+        var remaining = (isFinite(video.duration) ? video.duration : 10) - video.currentTime + 1.5;
+        window.setTimeout(closeSplash, Math.max(1500, remaining * 1000));
+      });
+      window.setTimeout(function () {
+        if (video.currentTime < 0.05) closeSplash();
+      }, 8000);
+      video.playsInline = true;
+      var started = video.play();
+      if (started && started.catch) {
+        started.catch(function () {
+          video.muted = true;
+          var retry = video.play();
+          if (retry && retry.catch) retry.catch(closeSplash);
+        });
+      }
+    })();
+  </script>
   <header class="topbar">
     <div class="container topbar-inner">
       <div class="brand">
