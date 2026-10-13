@@ -245,7 +245,29 @@
     }
   }
 
-  function signInWithGoogle() {
+  function base64UrlEncode(arrayBuffer) {
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = "";
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  function generateCodeVerifier() {
+    const bytes = new Uint8Array(32);
+    window.crypto.getRandomValues(bytes);
+    return base64UrlEncode(bytes.buffer);
+  }
+
+  async function generateCodeChallenge(verifier) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(verifier);
+    const hash = await window.crypto.subtle.digest("SHA-256", data);
+    return base64UrlEncode(hash);
+  }
+
+  async function signInWithGoogle() {
     if (!supabaseUrl || !publishableKey) {
       if (errorText) {
         errorText.textContent = "Autenticação não configurada.";
@@ -257,35 +279,51 @@
       googleBtn.disabled = true;
       googleBtn.classList.add("is-loading");
     }
-    const redirectTo = `${window.location.origin}${window.location.pathname}`;
+    const redirectTo = `${window.location.origin}/`;
+    try {
+      if (window.crypto && window.crypto.subtle) {
+        const verifier = generateCodeVerifier();
+        sessionStorage.setItem("sb_auth_verifier", verifier);
+        const challenge = await generateCodeChallenge(verifier);
+        const url = `${supabaseUrl}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}&code_challenge=${encodeURIComponent(challenge)}&code_challenge_method=s256`;
+        window.location.assign(url);
+        return;
+      }
+    } catch (_err) {
+      // Fallback sem PKCE se SubtleCrypto falhar
+    }
     const url = `${supabaseUrl}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}`;
     window.location.assign(url);
   }
 
-  function checkUrlSession() {
-    const hash = window.location.hash ? window.location.hash.substring(1) : "";
-    const search = window.location.search ? window.location.search.substring(1) : "";
-    if (!hash && !search) return false;
+  async function checkUrlSession() {
+    const searchParams = new URLSearchParams(window.location.search || "");
+    const hashParams = new URLSearchParams(window.location.hash ? window.location.hash.substring(1) : "");
+    const getParam = (key) => hashParams.get(key) || searchParams.get(key);
 
-    const params = new URLSearchParams(hash || search);
-    const accessToken = params.get("access_token");
-    const refreshToken = params.get("refresh_token");
-    const expiresIn = params.get("expires_in");
-    const errorParam = params.get("error");
-    const errorDesc = params.get("error_description");
+    const errorParam = getParam("error");
+    const errorDesc = getParam("error_description");
 
     if (errorParam || errorDesc) {
       window.history.replaceState(null, document.title, window.location.pathname);
       if (errorText) {
-        const desc = errorDesc ? decodeURIComponent(errorDesc).replace(/\+/g, " ") : "Falha na autenticação com o Google.";
+        let desc = errorDesc ? decodeURIComponent(errorDesc).replace(/\+/g, " ") : "Falha na autenticação com o Google.";
+        if (desc.toLowerCase().includes("redirect") && desc.toLowerCase().includes("not allowed")) {
+          desc = "URL de redirecionamento não autorizada no Supabase. Adicione o domínio do Koyeb nas Redirect URLs do projeto.";
+        }
         errorText.textContent = desc;
         errorText.hidden = false;
       }
       return false;
     }
 
+    const accessToken = getParam("access_token");
+    const refreshToken = getParam("refresh_token");
+    const expiresIn = getParam("expires_in");
+
     if (accessToken && refreshToken) {
       window.history.replaceState(null, document.title, window.location.pathname);
+      sessionStorage.removeItem("sb_auth_verifier");
       session.generation += 1;
       const generation = session.generation;
       const payload = {
@@ -303,6 +341,48 @@
         return true;
       }
     }
+
+    const code = getParam("code");
+    if (code) {
+      window.history.replaceState(null, document.title, window.location.pathname);
+      const verifier = sessionStorage.getItem("sb_auth_verifier");
+      sessionStorage.removeItem("sb_auth_verifier");
+      if (statusText) statusText.textContent = "Concluindo login com Google…";
+      try {
+        const body = verifier
+          ? { auth_code: code, code_verifier: verifier }
+          : { auth_code: code };
+        const res = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=pkce`, {
+          method: "POST",
+          headers: {
+            apikey: publishableKey,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.msg || errData.error_description || "Não foi possível validar o código de autenticação.");
+        }
+        const data = await res.json();
+        session.generation += 1;
+        if (saveTokens(data, session.generation)) {
+          if (loginContainer) loginContainer.hidden = true;
+          loginForm.hidden = true;
+          if (logoutButton) logoutButton.hidden = false;
+          if (statusText) statusText.textContent = "Sessão autenticada.";
+          clearPrivateState();
+          notify("auth:authenticated");
+          return true;
+        }
+      } catch (err) {
+        if (errorText) {
+          errorText.textContent = err.message || "Falha na validação do login Google.";
+          errorText.hidden = false;
+        }
+      }
+    }
+
     return false;
   }
 
@@ -337,10 +417,11 @@
 
   if (logoutButton) logoutButton.addEventListener("click", () => signOut());
 
-  const hasUrlSession = checkUrlSession();
-  if (!hasUrlSession) {
-    renderSignedOut();
-  }
+  checkUrlSession().then((hasSession) => {
+    if (!hasSession && !session.tokens) {
+      renderSignedOut();
+    }
+  });
 
   window.AppAuth = Object.freeze({
     fetch: authenticatedFetch,
