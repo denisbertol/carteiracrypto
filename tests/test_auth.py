@@ -76,6 +76,36 @@ class TestAuth(unittest.TestCase):
             self.verifier.verify_token(token)
         self.assertEqual(error.exception.status_code, 403)
 
+    def test_native_token_creation_and_verification(self):
+        from app.auth import create_access_token, create_refresh_token, refresh_access_token
+        access_token = create_access_token(self.settings.owner_user_id, self.settings.owner_email)
+        verified_id = self.verifier.verify_token(access_token)
+        self.assertEqual(verified_id, self.settings.owner_user_id)
+
+        refresh_token = create_refresh_token(self.settings.owner_user_id)
+        refresh_res = refresh_access_token(refresh_token)
+        self.assertIn("access_token", refresh_res)
+        self.assertEqual(
+            self.verifier.verify_token(refresh_res["access_token"]),
+            self.settings.owner_user_id,
+        )
+
+    def test_native_password_authentication(self):
+        from app.auth import authenticate_with_password
+        pwd = (
+            self.settings.owner_password.get_secret_value()
+            if hasattr(self.settings.owner_password, "get_secret_value")
+            else str(self.settings.owner_password)
+        )
+        res = authenticate_with_password(self.settings.owner_email, pwd)
+        self.assertIn("access_token", res)
+        self.assertEqual(self.verifier.verify_token(res["access_token"]), self.settings.owner_user_id)
+
+        with self.assertRaises(AuthError) as err:
+            authenticate_with_password(self.settings.owner_email, "wrong_password")
+        self.assertEqual(err.exception.status_code, 401)
+
 
 if __name__ == "__main__":
     unittest.main()
+

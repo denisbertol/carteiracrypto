@@ -13,8 +13,7 @@
   const googleBtn = document.getElementById("google-login-btn");
   const togglePasswordBtn = document.getElementById("toggle-password");
   const appContent = document.getElementById("app-content");
-  const supabaseUrl = document.querySelector('meta[name="supabase-url"]')?.content?.replace(/\/$/, "");
-  const publishableKey = document.querySelector('meta[name="supabase-publishable-key"]')?.content;
+  const googleClientId = document.querySelector('meta[name="google-client-id"]')?.content;
 
   const session = {
     tokens: null,
@@ -22,10 +21,6 @@
     refreshTimer: null,
     generation: 0,
   };
-
-  function authUrl(path) {
-    return `${supabaseUrl}/auth/v1/${path}`;
-  }
 
   function notify(name) {
     document.dispatchEvent(new CustomEvent(name));
@@ -80,7 +75,7 @@
       refreshToken: payload.refresh_token,
       expiresAt: Number.isFinite(absoluteExpiry) && absoluteExpiry > 0
         ? absoluteExpiry
-        : Date.now() + (Number.isFinite(expiresIn) ? expiresIn : 3600) * 1000,
+        : Date.now() + (Number.isFinite(expiresIn) ? expiresIn : 86400) * 1000,
     };
     if (session.refreshTimer !== null) clearTimeout(session.refreshTimer);
     const refreshDelay = Math.max(0, session.tokens.expiresAt - Date.now() - 60000);
@@ -90,19 +85,21 @@
     return true;
   }
 
-  async function authRequest(path, payload) {
-    if (!supabaseUrl || !publishableKey) throw new Error("Autenticação não configurada.");
-    const response = await fetch(authUrl(path), {
+  async function postJson(endpoint, data) {
+    const response = await fetch(endpoint, {
       method: "POST",
       cache: "no-store",
       credentials: "omit",
       headers: {
-        apikey: publishableKey,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(data),
     });
-    if (!response.ok) throw new Error("Não foi possível autenticar a sessão.");
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      const message = errData.detail?.error?.message || errData.detail?.error || "Erro na autenticação.";
+      throw new Error(typeof message === "string" ? message : JSON.stringify(message));
+    }
     return response.json();
   }
 
@@ -113,7 +110,7 @@
     const generation = session.generation;
     const inFlight = (async () => {
       try {
-        const payload = await authRequest("token?grant_type=refresh_token", {
+        const payload = await postJson("/api/v1/auth/refresh", {
           refresh_token: refreshToken,
         });
         if (generation !== session.generation || session.tokens?.refreshToken !== refreshToken) {
@@ -171,7 +168,6 @@
   }
 
   async function signOut() {
-    const tokens = session.tokens;
     session.generation += 1;
     session.tokens = null;
     session.refreshInFlight = null;
@@ -180,21 +176,6 @@
     clearPrivateState();
     renderSignedOut("Você saiu da sua conta.");
     notify("auth:signed-out");
-    if (tokens && supabaseUrl && publishableKey) {
-      try {
-        await fetch(authUrl("logout"), {
-          method: "POST",
-          cache: "no-store",
-          credentials: "omit",
-          headers: {
-            apikey: publishableKey,
-            Authorization: `Bearer ${tokens.accessToken}`,
-          },
-        });
-      } catch (_error) {
-        // Clearing the in-memory session is sufficient when logout is offline.
-      }
-    }
   }
 
   async function signIn(email, password) {
@@ -216,7 +197,7 @@
     session.refreshTimer = null;
     clearPrivateState();
     try {
-      const payload = await authRequest("token?grant_type=password", { email, password });
+      const payload = await postJson("/api/v1/auth/login", { email, password });
       passwordInput.value = "";
       if (!saveTokens(payload, generation)) {
         if (submitBtn) {
@@ -231,7 +212,7 @@
       if (statusText) statusText.textContent = "Sessão autenticada.";
       clearPrivateState();
       notify("auth:authenticated");
-    } catch (_error) {
+    } catch (error) {
       passwordInput.value = "";
       if (submitBtn) {
         submitBtn.disabled = false;
@@ -239,41 +220,16 @@
       }
       if (generation !== session.generation) return;
       if (errorText) {
-        errorText.textContent = "Não foi possível entrar. Confira suas credenciais e tente novamente.";
+        errorText.textContent = error.message || "Não foi possível entrar. Confira suas credenciais.";
         errorText.hidden = false;
       }
     }
-  }
-
-  function base64UrlEncode(arrayBuffer) {
-    const bytes = new Uint8Array(arrayBuffer);
-    let binary = "";
-    for (let i = 0; i < bytes.byteLength; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  }
-
-  function generateCodeVerifier() {
-    const bytes = new Uint8Array(32);
-    window.crypto.getRandomValues(bytes);
-    return base64UrlEncode(bytes.buffer);
-  }
-
-  async function generateCodeChallenge(verifier) {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(verifier);
-    const hash = await window.crypto.subtle.digest("SHA-256", data);
-    return base64UrlEncode(hash);
   }
 
   async function signInWithGoogle() {
-    if (!supabaseUrl || !publishableKey) {
-      if (errorText) {
-        errorText.textContent = "Autenticação não configurada.";
-        errorText.hidden = false;
-      }
-      return;
+    if (errorText) {
+      errorText.hidden = true;
+      errorText.textContent = "";
     }
     if (googleBtn) {
       googleBtn.disabled = true;
@@ -281,92 +237,65 @@
     }
     const redirectTo = `${window.location.origin}/`;
     try {
-      if (window.crypto && window.crypto.subtle) {
-        const verifier = generateCodeVerifier();
-        sessionStorage.setItem("sb_auth_verifier", verifier);
-        const challenge = await generateCodeChallenge(verifier);
-        const url = `${supabaseUrl}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}&code_challenge=${encodeURIComponent(challenge)}&code_challenge_method=s256`;
-        window.location.assign(url);
-        return;
+      let url = "";
+      if (googleClientId) {
+        const params = new URLSearchParams({
+          client_id: googleClientId,
+          redirect_uri: redirectTo,
+          response_type: "code",
+          scope: "openid email profile",
+          access_type: "online",
+          prompt: "select_account",
+        });
+        url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+      } else {
+        const res = await fetch(`/api/v1/auth/google/url?redirect_uri=${encodeURIComponent(redirectTo)}`);
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail?.error?.message || "Google OAuth não configurado no servidor.");
+        }
+        const data = await res.json();
+        url = data.url;
       }
-    } catch (_err) {
-      // Fallback sem PKCE se SubtleCrypto falhar
+      window.location.assign(url);
+    } catch (err) {
+      if (googleBtn) {
+        googleBtn.disabled = false;
+        googleBtn.classList.remove("is-loading");
+      }
+      if (errorText) {
+        errorText.textContent = err.message || "Não foi possível iniciar o login com o Google.";
+        errorText.hidden = false;
+      }
     }
-    const url = `${supabaseUrl}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}`;
-    window.location.assign(url);
   }
 
   async function checkUrlSession() {
     const searchParams = new URLSearchParams(window.location.search || "");
-    const hashParams = new URLSearchParams(window.location.hash ? window.location.hash.substring(1) : "");
-    const getParam = (key) => hashParams.get(key) || searchParams.get(key);
-
-    const errorParam = getParam("error");
-    const errorDesc = getParam("error_description");
+    const errorParam = searchParams.get("error");
+    const errorDesc = searchParams.get("error_description");
 
     if (errorParam || errorDesc) {
       window.history.replaceState(null, document.title, window.location.pathname);
       if (errorText) {
-        let desc = errorDesc ? decodeURIComponent(errorDesc).replace(/\+/g, " ") : "Falha na autenticação com o Google.";
-        if (desc.toLowerCase().includes("redirect") && desc.toLowerCase().includes("not allowed")) {
-          desc = "URL de redirecionamento não autorizada no Supabase. Adicione o domínio do Koyeb nas Redirect URLs do projeto.";
-        }
-        errorText.textContent = desc;
+        errorText.textContent = errorDesc ? decodeURIComponent(errorDesc).replace(/\+/g, " ") : `Erro OAuth: ${errorParam}`;
         errorText.hidden = false;
       }
       return false;
     }
 
-    const accessToken = getParam("access_token");
-    const refreshToken = getParam("refresh_token");
-    const expiresIn = getParam("expires_in");
-
-    if (accessToken && refreshToken) {
-      window.history.replaceState(null, document.title, window.location.pathname);
-      sessionStorage.removeItem("sb_auth_verifier");
-      session.generation += 1;
-      const generation = session.generation;
-      const payload = {
-        access_token: accessToken,
-        refresh_token: refreshToken,
-        expires_in: expiresIn ? Number(expiresIn) : 3600,
-      };
-      if (saveTokens(payload, generation)) {
-        if (loginContainer) loginContainer.hidden = true;
-        loginForm.hidden = true;
-        if (logoutButton) logoutButton.hidden = false;
-        if (statusText) statusText.textContent = "Sessão autenticada.";
-        clearPrivateState();
-        notify("auth:authenticated");
-        return true;
-      }
-    }
-
-    const code = getParam("code");
+    const code = searchParams.get("code");
     if (code) {
       window.history.replaceState(null, document.title, window.location.pathname);
-      const verifier = sessionStorage.getItem("sb_auth_verifier");
-      sessionStorage.removeItem("sb_auth_verifier");
       if (statusText) statusText.textContent = "Concluindo login com Google…";
+      const redirectTo = `${window.location.origin}/`;
       try {
-        const body = verifier
-          ? { auth_code: code, code_verifier: verifier }
-          : { auth_code: code };
-        const res = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=pkce`, {
-          method: "POST",
-          headers: {
-            apikey: publishableKey,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(body),
+        const payload = await postJson("/api/v1/auth/google", {
+          code: code,
+          redirect_uri: redirectTo,
         });
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.msg || errData.error_description || "Não foi possível validar o código de autenticação.");
-        }
-        const data = await res.json();
         session.generation += 1;
-        if (saveTokens(data, session.generation)) {
+        if (saveTokens(payload, session.generation)) {
           if (loginContainer) loginContainer.hidden = true;
           loginForm.hidden = true;
           if (logoutButton) logoutButton.hidden = false;

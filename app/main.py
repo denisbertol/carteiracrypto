@@ -19,6 +19,7 @@ from app.routes.monitoring import router as monitoring_router
 from app.routes.dashboard import router as dashboard_router
 from app.routes.history import router as history_router
 from app.routes.ai import router as ai_router
+from app.routes.auth import router as auth_router
 from app.services.monitoring_recovery import reconcile_expired_cycles
 from app.services.retention import cleanup_retained_history
 
@@ -88,6 +89,7 @@ app.include_router(monitoring_router)
 app.include_router(dashboard_router)
 app.include_router(history_router)
 app.include_router(ai_router)
+app.include_router(auth_router)
 
 
 @app.get("/health/live", tags=["health"])
@@ -123,8 +125,9 @@ def home(request: Request):
             # never service-role credentials or user/session tokens.
             "supabase_url": get_settings().supabase_url.rstrip("/"),
             "supabase_publishable_key": get_settings().supabase_publishable_key,
+            "google_client_id": get_settings().google_client_id,
             "dev_login": (
-                {"email": "denisbertol@gmail.com", "password": "denis123"}
+                {"email": get_settings().owner_email, "password": "denis123"}
                 if get_settings().app_env == "development"
                 else None
             ),

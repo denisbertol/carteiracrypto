@@ -38,6 +38,14 @@ try:
             default=UUID("00000000-0000-0000-0000-000000000000"),
             alias="OWNER_USER_ID",
         )
+        owner_email: str = Field(default="denisbertol@gmail.com", alias="OWNER_EMAIL")
+        owner_password: SecretStr = Field(default=SecretStr("denis123"), alias="OWNER_PASSWORD")
+        secret_key: SecretStr = Field(
+            default=SecretStr("carteira-crypto-secret-key-super-secure-change-in-production"),
+            alias="SECRET_KEY",
+        )
+        google_client_id: str = Field(default="", alias="GOOGLE_CLIENT_ID")
+        google_client_secret: SecretStr = Field(default=SecretStr(""), alias="GOOGLE_CLIENT_SECRET")
 
         quote_mode: str = Field(default="unavailable", alias="QUOTE_MODE")
         demo_quote_usd: Decimal = Field(default=Decimal("180"), alias="DEMO_QUOTE_USD")
@@ -82,6 +90,13 @@ except ImportError:
                 "OWNER_USER_ID", "00000000-0000-0000-0000-000000000000"
             )
             self.owner_user_id = UUID(raw_owner)
+            self.owner_email = os.getenv("OWNER_EMAIL", "denisbertol@gmail.com")
+            self.owner_password = HiddenSecret(os.getenv("OWNER_PASSWORD", "denis123"))
+            self.secret_key = HiddenSecret(
+                os.getenv("SECRET_KEY", "carteira-crypto-secret-key-super-secure-change-in-production")
+            )
+            self.google_client_id = os.getenv("GOOGLE_CLIENT_ID", "")
+            self.google_client_secret = HiddenSecret(os.getenv("GOOGLE_CLIENT_SECRET", ""))
             self.quote_mode = os.getenv("QUOTE_MODE", "unavailable")
             self.demo_quote_usd = Decimal(os.getenv("DEMO_QUOTE_USD", "180"))
             self.coingecko_demo_api_key = HiddenSecret(os.getenv("COINGECKO_DEMO_API_KEY", ""))
