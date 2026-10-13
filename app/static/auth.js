@@ -10,6 +10,7 @@
   const statusText = document.getElementById("session-status");
   const errorText = document.getElementById("auth-error");
   const logoutButton = document.getElementById("logout-button");
+  const headerSettingsBtn = document.getElementById("header-settings-btn");
   const googleBtn = document.getElementById("google-login-btn");
   const togglePasswordBtn = document.getElementById("toggle-password");
   const appContent = document.getElementById("app-content");
@@ -46,6 +47,7 @@
     if (loginContainer) loginContainer.hidden = false;
     loginForm.hidden = false;
     if (logoutButton) logoutButton.hidden = true;
+    if (headerSettingsBtn) headerSettingsBtn.hidden = true;
     if (statusText) statusText.textContent = message || "Entre para consultar sua carteira.";
   }
 
@@ -209,6 +211,7 @@
       if (loginContainer) loginContainer.hidden = true;
       loginForm.hidden = true;
       if (logoutButton) logoutButton.hidden = false;
+      if (headerSettingsBtn) headerSettingsBtn.hidden = false;
       if (statusText) statusText.textContent = "Sessão autenticada.";
       clearPrivateState();
       notify("auth:authenticated");
@@ -299,6 +302,7 @@
           if (loginContainer) loginContainer.hidden = true;
           loginForm.hidden = true;
           if (logoutButton) logoutButton.hidden = false;
+          if (headerSettingsBtn) headerSettingsBtn.hidden = false;
           if (statusText) statusText.textContent = "Sessão autenticada.";
           clearPrivateState();
           notify("auth:authenticated");
@@ -345,6 +349,13 @@
   }
 
   if (logoutButton) logoutButton.addEventListener("click", () => signOut());
+  if (headerSettingsBtn) {
+    headerSettingsBtn.addEventListener("click", () => {
+      if (window.AiImport && typeof window.AiImport.openSettings === "function") {
+        window.AiImport.openSettings();
+      }
+    });
+  }
 
   checkUrlSession().then((hasSession) => {
     if (!hasSession && !session.tokens) {

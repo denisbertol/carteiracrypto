@@ -10,6 +10,8 @@
   let active = false;
   let finishTimer = null;
   let closeTimer = null;
+  let startedAt = 0;
+  const MIN_SPLASH_MS = 2500;
 
   function setProgress(percent, message) {
     const clamped = Math.max(0, Math.min(100, Math.round(percent)));
@@ -30,6 +32,7 @@
       return;
     }
     active = true;
+    startedAt = Date.now();
     if (finishTimer) { clearTimeout(finishTimer); finishTimer = null; }
     if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
 
@@ -64,10 +67,11 @@
     if (!active || !splash) return;
     setProgress(100, "Carteira pronta!");
 
-    // Intervalo breve para permitir que o usuário veja a barra completar 100%
+    const elapsed = Date.now() - startedAt;
+    const delay = Math.max(450, MIN_SPLASH_MS - elapsed);
     finishTimer = setTimeout(() => {
       close();
-    }, 350);
+    }, delay);
   }
 
   function error(message) {
@@ -102,10 +106,16 @@
   }
 
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && active) {
+    if ((event.key === "Escape" || event.key === " ") && active) {
       close();
     }
   });
+
+  if (splash) {
+    splash.addEventListener("click", () => {
+      if (active) close();
+    });
+  }
 
   if (video) {
     // Se o vídeo atingir o fim antes dos dados terminarem, mantém em loop suave

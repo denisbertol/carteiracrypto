@@ -67,7 +67,10 @@
     const aiOperation = button("Incluir com IA", "btn btn-outline btn-small", () => {
       if (window.AiImport) window.AiImport.openOperations();
     });
-    tools.append(select, aiOperation, addOperation);
+    const exportBtn = window.Portfolio && typeof window.Portfolio.exportMenu === "function"
+      ? window.Portfolio.exportMenu("btn btn-outline btn-small")
+      : null;
+    tools.append(select, ...(exportBtn ? [exportBtn] : []), aiOperation, addOperation);
     head.append(heading, tools);
     card.append(head);
 

@@ -251,8 +251,8 @@
     if (window.Operations && typeof window.Operations.openForm === "function") window.Operations.openForm(symbol);
   }
 
-  function exportMenu() {
-    const trigger = button("Exportar ▾", "btn btn-outline");
+  function exportMenu(btnClass = "btn btn-outline") {
+    const trigger = button("Exportar ▾", btnClass);
     trigger.setAttribute("aria-haspopup", "menu");
     trigger.addEventListener("click", () => {
       const list = element("div", "menu-list");
@@ -310,10 +310,7 @@
       panel.setAttribute("aria-label", label);
       panels[key] = panel;
     });
-    const actions = element("div", "tab-actions");
-    if (window.AiImport) actions.append(window.AiImport.gearButton());
-    actions.append(exportMenu(), button("+ Adicionar lançamento", "btn btn-primary", () => openOperationForm()));
-    bar.append(nav, actions);
+    bar.append(nav);
 
     const status = element("div", "status-strip");
     const unread = element("div", "unread-alerts");
@@ -371,12 +368,6 @@
     return card;
   }
 
-  function returnPill(label, value) {
-    const pill = element("div", "return-pill");
-    pill.append(element("span", "muted", label), percentBadge(value));
-    return pill;
-  }
-
   function renderKpis(data) {
     const totals = data.portfolio.totals || {};
     const evolution = data.evolution || {};
@@ -397,10 +388,6 @@
         ["Ganho de capital", formatMoney(unrealized), trendClass(unrealized)],
         ["Realizado líquido", formatMoney(realized), trendClass(realized)],
       ]),
-      kpiCard("Rentabilidade", null, "", [
-        returnPill("12 meses", evolution.return_12m_percent),
-        returnPill("Total", evolution.return_total_percent),
-      ], []),
     );
     return grid;
   }
@@ -983,7 +970,7 @@
       await request("/api/v1/assets");
 
       if (isPostLogin && window.SplashLoader) {
-        window.SplashLoader.setProgress(70, "Consultando cotações e rentabilidade…");
+        window.SplashLoader.setProgress(70, "Consultando cotações e mercado…");
       }
       const result = await request("/api/v1/dashboard");
       if (version !== loadVersion || !window.AppAuth.hasSession()) {
@@ -1077,6 +1064,7 @@
     showTab,
     revision: () => (snapshot ? snapshot.portfolio_revision : null),
     clear: () => { reset(); root.replaceChildren(); },
+    exportMenu: (btnClass) => exportMenu(btnClass),
   });
   window.AppUI = Object.freeze({
     element, request, formatMoney, formatPrice, formatDate, formatPercent, formatNumber, makeTable, section, button,
