@@ -46,7 +46,9 @@ body.has-splash { overflow: hidden; }
   position: fixed;
   inset: 0;
   width: 100vw;
+  width: 100dvw;
   height: 100vh;
+  height: 100dvh;
   z-index: 10000;
   display: flex;
   align-items: center;
@@ -58,6 +60,9 @@ body.has-splash { overflow: hidden; }
   opacity: 1;
   visibility: visible;
   transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.4s ease;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
 }
 .splash[hidden] {
   display: none !important;
@@ -92,6 +97,7 @@ body.has-splash { overflow: hidden; }
   overflow: hidden;
   border-radius: 0;
   box-shadow: none;
+  pointer-events: none;
 }
 
 .splash-video {
@@ -101,6 +107,21 @@ body.has-splash { overflow: hidden; }
   object-position: center;
   display: block;
   background: #000;
+  pointer-events: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.splash-video::-webkit-media-controls,
+.splash-video::-webkit-media-controls-enclosure,
+.splash-video::-webkit-media-controls-panel,
+.splash-video::-webkit-media-controls-play-button,
+.splash-video::-webkit-media-controls-start-playback-button,
+.splash-video::-webkit-media-controls-overlay-play-button {
+  display: none !important;
+  -webkit-appearance: none !important;
+  opacity: 0 !important;
 }
 
 .splash-progress-container {

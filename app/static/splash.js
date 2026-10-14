@@ -43,15 +43,34 @@
 
     setProgress(15, "Iniciando sessão e conectando…");
 
+    // Garante reprodução 100% silenciosa e inline, sem notificação de mídia no Android Chrome
     try {
       video.currentTime = 0;
-      video.volume = 0.5;
+      video.muted = true;
+      video.defaultMuted = true;
+      video.volume = 0;
+      video.playsInline = true;
+      video.setAttribute("playsinline", "");
+      video.setAttribute("webkit-playsinline", "");
+      if ("disablePictureInPicture" in video) {
+        video.disablePictureInPicture = true;
+      }
+      if ("disableRemotePlayback" in video) {
+        video.disableRemotePlayback = true;
+      }
     } catch (_e) {}
 
-    video.playsInline = true;
+    if ("mediaSession" in navigator) {
+      try {
+        navigator.mediaSession.playbackState = "none";
+        navigator.mediaSession.metadata = null;
+      } catch (_e) {}
+    }
+
     const playPromise = video.play();
     if (playPromise && playPromise.catch) {
       playPromise.catch(() => {
+        // Se autoplay falhar, força muted e tenta novamente
         video.muted = true;
         const retry = video.play();
         if (retry && retry.catch) {
@@ -95,6 +114,13 @@
     if (video) {
       try {
         video.pause();
+        video.currentTime = 0;
+      } catch (_e) {}
+    }
+
+    if ("mediaSession" in navigator) {
+      try {
+        navigator.mediaSession.playbackState = "none";
       } catch (_e) {}
     }
 
@@ -118,10 +144,11 @@
   }
 
   if (video) {
-    // Se o vídeo atingir o fim antes dos dados terminarem, mantém em loop suave
+    // Se o vídeo atingir o fim antes dos dados terminarem, mantém em loop suave silencioso
     video.addEventListener("ended", () => {
       if (active) {
         video.currentTime = 0;
+        video.muted = true;
         video.play().catch(() => {});
       }
     });
