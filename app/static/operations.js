@@ -19,6 +19,7 @@
   let dialog = null;
   let assets = [];
   let idempotencyKey = null;
+  let editingOperation = null;
 
   const ui = () => window.AppUI;
 
@@ -79,16 +80,21 @@
     } else {
       const visible = items.filter((item) => !filter || item.symbol === filter);
       card.append(ui().makeTable(
-        ["Data", "Tipo", "Ativo", "Quantidade", "Preço (USD)", "Taxa (USDT)", "Observação"],
-        visible.map((item) => [
-          ui().formatDate(item.occurred_at),
-          element("span", `kind-tag kind-${item.kind}`, KIND_LABELS[item.kind] || item.kind),
-          element("strong", "", item.symbol),
-          ui().formatNumber(item.quantity),
-          item.unit_price_usd ? ui().formatPrice(item.unit_price_usd) : "—",
-          Number(item.fee_usdt) ? ui().formatNumber(item.fee_usdt, 6) : "—",
-          item.note || [item.source_label, item.destination_label].filter(Boolean).join(" → ") || "—",
-        ]),
+        ["Data", "Tipo", "Ativo", "Quantidade", "Preço (USD)", "Taxa (USDT)", "Observação", "Ações"],
+        visible.map((item) => {
+          const editBtn = button("Editar", "btn btn-ghost btn-small", () => openEditForm(item));
+          editBtn.setAttribute("aria-label", `Editar lançamento de ${item.symbol}`);
+          return [
+            ui().formatDate(item.occurred_at),
+            element("span", `kind-tag kind-${item.kind}`, KIND_LABELS[item.kind] || item.kind),
+            element("strong", "", item.symbol),
+            ui().formatNumber(item.quantity),
+            item.unit_price_usd ? ui().formatPrice(item.unit_price_usd) : "—",
+            Number(item.fee_usdt) ? ui().formatNumber(item.fee_usdt, 6) : "—",
+            item.note || [item.source_label, item.destination_label].filter(Boolean).join(" → ") || "—",
+            editBtn,
+          ];
+        }),
         filter ? `Nenhum lançamento de ${filter}.` : "Nenhum lançamento registrado.",
       ));
     }
@@ -233,10 +239,16 @@
     status.dataset.formStatus = "true";
     status.hidden = true;
     const actions = element("div", "modal-actions");
+    const deleteBtn = button("Excluir lançamento", "btn btn-ghost btn-small", () => confirmDelete(form));
+    deleteBtn.type = "button";
+    deleteBtn.dataset.deleteOperation = "true";
+    deleteBtn.style.color = "var(--danger)";
+    deleteBtn.style.marginRight = "auto";
+    deleteBtn.hidden = true;
     const cancel = button("Cancelar", "btn btn-ghost", () => node.close());
     const submit = element("button", "btn btn-primary", "Salvar lançamento");
     submit.type = "submit";
-    actions.append(cancel, submit);
+    actions.append(deleteBtn, cancel, submit);
 
     form.append(head, grid, emptyAssets, newAsset, status, actions);
     node.append(form);
@@ -257,10 +269,18 @@
   async function openForm(symbol) {
     if (!window.AppAuth || !window.AppAuth.hasSession()) return;
     if (!dialog) dialog = buildDialog();
+    editingOperation = null;
     const form = dialog.querySelector("form");
     form.reset();
     setStatus(form, "");
     idempotencyKey = newKey();
+    dialog.querySelector("#operation-dialog-title").textContent = "Adicionar lançamento";
+    form.querySelector('button[type="submit"]').textContent = "Salvar lançamento";
+    const deleteBtn = form.querySelector('[data-delete-operation="true"]');
+    if (deleteBtn) deleteBtn.hidden = true;
+    const newAsset = form.querySelector("[data-new-asset]");
+    if (newAsset) newAsset.hidden = false;
+
     form.elements.occurred_at.value = localDateTimeValue(new Date());
     try {
       await loadAssets();
@@ -273,6 +293,50 @@
     if (preset && [...form.elements.asset_id.options].some((option) => option.value === preset.id)) {
       form.elements.asset_id.value = preset.id;
     }
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+    form.elements.quantity.focus();
+  }
+
+  async function openEditForm(item) {
+    if (!window.AppAuth || !window.AppAuth.hasSession()) return;
+    if (!dialog) dialog = buildDialog();
+    editingOperation = item;
+    const form = dialog.querySelector("form");
+    form.reset();
+    setStatus(form, "");
+    idempotencyKey = newKey();
+    dialog.querySelector("#operation-dialog-title").textContent = `Editar lançamento (${item.symbol})`;
+    form.querySelector('button[type="submit"]').textContent = "Salvar alterações";
+    const deleteBtn = form.querySelector('[data-delete-operation="true"]');
+    if (deleteBtn) deleteBtn.hidden = false;
+    const newAsset = form.querySelector("[data-new-asset]");
+    if (newAsset) newAsset.hidden = true;
+
+    try {
+      await loadAssets();
+    } catch (error) {
+      setStatus(form, error.message || "Não foi possível carregar os ativos.", true);
+    }
+
+    form.elements.kind.value = item.kind;
+    syncFields(form);
+    if ([...form.elements.asset_id.options].some((option) => option.value === item.asset_id)) {
+      form.elements.asset_id.value = item.asset_id;
+    }
+    if (item.occurred_at) {
+      const d = new Date(item.occurred_at);
+      if (!Number.isNaN(d.getTime())) {
+        form.elements.occurred_at.value = localDateTimeValue(d);
+      }
+    }
+    form.elements.quantity.value = item.quantity || "";
+    form.elements.unit_price_usd.value = item.unit_price_usd || "";
+    form.elements.fee_usdt.value = item.fee_usdt !== null && item.fee_usdt !== undefined ? String(item.fee_usdt) : "0";
+    form.elements.source_label.value = item.source_label || "";
+    form.elements.destination_label.value = item.destination_label || "";
+    form.elements.note.value = item.note || "";
+
     if (typeof dialog.showModal === "function") dialog.showModal();
     else dialog.setAttribute("open", "");
     form.elements.quantity.focus();
@@ -340,13 +404,20 @@
     const revision = window.Portfolio && window.Portfolio.revision();
     if (revision !== null && revision !== undefined) headers["If-Match"] = String(revision);
     const submit = form.querySelector('button[type="submit"]');
+    const deleteBtn = form.querySelector('[data-delete-operation="true"]');
     form.dataset.saving = "true";
     submit.disabled = true;
+    if (deleteBtn) deleteBtn.disabled = true;
     setStatus(form, "Salvando…");
+
+    const method = editingOperation ? "PATCH" : "POST";
+    const endpoint = editingOperation ? `/api/v1/operations/${editingOperation.id}` : "/api/v1/operations";
+
     try {
-      await ui().request("/api/v1/operations", { method: "POST", headers, body: JSON.stringify(payload) });
+      await ui().request(endpoint, { method, headers, body: JSON.stringify(payload) });
       idempotencyKey = newKey();
       items = null;
+      editingOperation = null;
       dialog.close();
       if (window.Portfolio) await window.Portfolio.load();
       const panel = document.querySelector('[data-tab-panel="lancamentos"]');
@@ -365,6 +436,44 @@
     } finally {
       form.dataset.saving = "false";
       submit.disabled = false;
+      if (deleteBtn) deleteBtn.disabled = false;
+    }
+  }
+
+  async function confirmDelete(form) {
+    if (!editingOperation || form.dataset.saving === "true") return;
+    const confirmed = window.confirm(
+      `Deseja realmente excluir este lançamento de ${editingOperation.symbol}? O saldo e os resultados da carteira serão recalculados.`
+    );
+    if (!confirmed) return;
+
+    const headers = { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey };
+    const revision = window.Portfolio && window.Portfolio.revision();
+    if (revision !== null && revision !== undefined) headers["If-Match"] = String(revision);
+
+    const submit = form.querySelector('button[type="submit"]');
+    const deleteBtn = form.querySelector('[data-delete-operation="true"]');
+    form.dataset.saving = "true";
+    submit.disabled = true;
+    if (deleteBtn) deleteBtn.disabled = true;
+    setStatus(form, "Excluindo…");
+
+    try {
+      await ui().request(`/api/v1/operations/${editingOperation.id}`, { method: "DELETE", headers });
+      idempotencyKey = newKey();
+      items = null;
+      editingOperation = null;
+      dialog.close();
+      if (window.Portfolio) await window.Portfolio.load();
+      const panel = document.querySelector('[data-tab-panel="lancamentos"]');
+      if (panel && !panel.hidden && items === null) await show(panel);
+    } catch (error) {
+      idempotencyKey = newKey();
+      setStatus(form, error.message || "Não foi possível excluir o lançamento.", true);
+    } finally {
+      form.dataset.saving = "false";
+      submit.disabled = false;
+      if (deleteBtn) deleteBtn.disabled = false;
     }
   }
 
@@ -378,6 +487,7 @@
     filter = "";
     assets = [];
     loading = null;
+    editingOperation = null;
     if (dialog) {
       if (dialog.open) dialog.close();
       dialog.remove();
@@ -391,6 +501,7 @@
   window.Operations = Object.freeze({
     show,
     openForm,
+    openEditForm,
     invalidate,
     clear,
     setFilter: (symbol) => { filter = symbol || ""; },
