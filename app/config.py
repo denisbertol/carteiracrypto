@@ -47,6 +47,10 @@ try:
         google_client_id: str = Field(default="", alias="GOOGLE_CLIENT_ID")
         google_client_secret: SecretStr = Field(default=SecretStr(""), alias="GOOGLE_CLIENT_SECRET")
 
+        telegram_bot_token: SecretStr = Field(default=SecretStr(""), alias="TELEGRAM_BOT_TOKEN")
+        telegram_allowed_users: str = Field(default="", alias="TELEGRAM_ALLOWED_USERS")
+        verbose: bool = Field(default=False, alias="VERBOSE")
+
         quote_mode: str = Field(default="unavailable", alias="QUOTE_MODE")
         demo_quote_usd: Decimal = Field(default=Decimal("180"), alias="DEMO_QUOTE_USD")
         coingecko_demo_api_key: SecretStr = Field(default=SecretStr(""), alias="COINGECKO_DEMO_API_KEY")
@@ -97,6 +101,9 @@ except ImportError:
             )
             self.google_client_id = os.getenv("GOOGLE_CLIENT_ID", "")
             self.google_client_secret = HiddenSecret(os.getenv("GOOGLE_CLIENT_SECRET", ""))
+            self.telegram_bot_token = HiddenSecret(os.getenv("TELEGRAM_BOT_TOKEN", ""))
+            self.telegram_allowed_users = os.getenv("TELEGRAM_ALLOWED_USERS", "")
+            self.verbose = os.getenv("VERBOSE", "").lower() in ("true", "1", "yes")
             self.quote_mode = os.getenv("QUOTE_MODE", "unavailable")
             self.demo_quote_usd = Decimal(os.getenv("DEMO_QUOTE_USD", "180"))
             self.coingecko_demo_api_key = HiddenSecret(os.getenv("COINGECKO_DEMO_API_KEY", ""))
@@ -158,6 +165,12 @@ def provider_configured(settings, now: datetime) -> bool:
     return bool(settings.quote_mode == "coingecko"
                 and settings.coingecko_demo_api_key.get_secret_value()
                 and start is not None and end is not None and start <= now < end)
+
+
+def is_telegram_configured(settings) -> bool:
+    """Verifica se o token do bot do Telegram está configurado."""
+    token = settings.telegram_bot_token.get_secret_value() if hasattr(settings.telegram_bot_token, "get_secret_value") else str(settings.telegram_bot_token)
+    return bool(token and token.strip())
 
 
 @lru_cache(maxsize=1)

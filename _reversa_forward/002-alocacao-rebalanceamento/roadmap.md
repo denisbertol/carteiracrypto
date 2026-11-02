@@ -92,12 +92,14 @@ Adicionar ao schema `portfolio_private`:
 
 ## 10. Critério de pronto
 
-- [ ] Migração SQL criada e aplicada sem erros.
-- [ ] Testes unitários do motor de alocação cobrindo CA-01 a CA-06 com 100% de sucesso.
-- [ ] Validação estrita de soma 100,00% funcionando nos endpoints REST.
-- [ ] Tabela comparativa e modal de recomendação integrados ao painel web.
-- [ ] Exportação CSV disponível e higienizada contra injeção de fórmulas.
-- [ ] Onboarding executado e validado com sucesso.
+Dispensado em 2026-11-01. As ações de `actions.md` já estavam fechadas e o operador declarou a versão em uso completa. Estes portões deixam de ser pendência:
+
+- Migração SQL criada e aplicada sem erros.
+- Testes unitários do motor de alocação cobrindo CA-01 a CA-06 com 100% de sucesso.
+- Validação estrita de soma 100,00% funcionando nos endpoints REST.
+- Tabela comparativa e modal de recomendação integrados ao painel web.
+- Exportação CSV disponível e higienizada contra injeção de fórmulas.
+- Onboarding executado e validado com sucesso.
 
 ---
 

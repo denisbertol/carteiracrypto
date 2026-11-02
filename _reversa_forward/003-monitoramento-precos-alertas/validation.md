@@ -1,6 +1,6 @@
 # Validação integrada — monitoramento de preços e alertas
 
-**Estado: parcial, sem aprovação integrada.** Atualizado em 2026-10-03 (America/Sao_Paulo).
+**Estado: dispensada em 2026-11-01.** O registro abaixo permanece como evidência histórica da rodada de 2026-10-03. A prova integrada deixou de ser exigida.
 
 Este registro separa evidência anterior de implementação, checagens pendentes e prova real. A lista `progress.jsonl` mantém os resultados por ação; lacunas desta execução não são tratadas como aprovação.
 

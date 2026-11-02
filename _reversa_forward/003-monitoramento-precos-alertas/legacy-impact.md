@@ -56,3 +56,7 @@ A implementação continua greenfield e os componentes de retenção e dashboard
 ## Retomada de coding — 2026-10-03
 
 Não houve novo arquivo de produto ou mudança de classificação nesta tentativa. O Chrome repetiu 8/8 cenários simulados; PostgreSQL, sessão real, provedor e ciclos reais continuam pendentes.
+
+## Baixa do operador — 2026-11-01
+
+T018 e T036 foram aceitas como entregues: `app/services/retention.py` faz a limpeza em lotes de até 1000 com lock advisory e preservação das referências vivas, e `GET /api/v1/dashboard` lê posição e alocação numa transação `REPEATABLE READ`. T030, T032 e T033 não tinham sido executadas e foram dispensadas; não há mais pendência de prova formal nesta feature.

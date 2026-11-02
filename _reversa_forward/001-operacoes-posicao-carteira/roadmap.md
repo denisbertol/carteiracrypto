@@ -95,15 +95,17 @@ A ligação QuoteReader é interna: `get_quotes(asset_ids)` retorna preço USD d
 
 ## 10. Critério de pronto
 
-- [ ] Todas as ações futuras de `actions.md` concluídas.
-- [ ] RF-01 a RF-12 e CA-01 a CA-16 verificados; Should incluídos nesta proposta.
-- [ ] Testes do motor, transações, RLS, idempotência, correção/exclusão e ordem temporal passam.
-- [ ] Totais incompletos, histórico vazio, falha de rede e sessão expirada tratados na interface móvel.
-- [ ] CSV preserva precisão e neutraliza fórmulas em campos textuais.
-- [ ] Metas de recursos medidas e relatório com resultados reais.
-- [ ] Container funcional e onboarding executado em ambiente isolado.
-- [ ] `cross-check.md`, se executado, sem CRITICAL/HIGH; `regression-watch.md` gerado no coding.
-- [ ] Re-extração recomendada após entrega; não é condição para este plano.
+Dispensado em 2026-11-01. As ações de `actions.md` já estavam fechadas e o operador declarou a versão em uso completa. Estes portões deixam de ser pendência:
+
+- Todas as ações futuras de `actions.md` concluídas.
+- RF-01 a RF-12 e CA-01 a CA-16 verificados; Should incluídos nesta proposta.
+- Testes do motor, transações, RLS, idempotência, correção/exclusão e ordem temporal passam.
+- Totais incompletos, histórico vazio, falha de rede e sessão expirada tratados na interface móvel.
+- CSV preserva precisão e neutraliza fórmulas em campos textuais.
+- Metas de recursos medidas e relatório com resultados reais.
+- Container funcional e onboarding executado em ambiente isolado.
+- `cross-check.md`, se executado, sem CRITICAL/HIGH; `regression-watch.md` gerado no coding.
+- Re-extração recomendada após entrega; não é condição para este plano.
 
 ## 11. Histórico de alterações
 

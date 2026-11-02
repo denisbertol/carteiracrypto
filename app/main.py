@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app.config import get_settings
+from app.config import get_settings, is_telegram_configured
 from app.db import close_db_pool, get_db_connection, init_db_pool
 from app.routes.api import router as api_router
 from app.routes.exports import router as exports_router
@@ -22,6 +22,7 @@ from app.routes.ai import router as ai_router
 from app.routes.auth import router as auth_router
 from app.services.monitoring_recovery import reconcile_expired_cycles
 from app.services.retention import cleanup_retained_history
+from app.services.telegram_poll import telegram_polling_loop
 
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
@@ -57,14 +58,22 @@ async def lifespan(app: FastAPI):
     # Inicialização do pool de conexões no startup
     init_db_pool()
     stop_event = asyncio.Event()
+    settings = get_settings()
     maintenance_task = asyncio.create_task(
-        _maintenance_loop(get_settings().owner_user_id, stop_event)
+        _maintenance_loop(settings.owner_user_id, stop_event)
     )
+    telegram_task = None
+    if is_telegram_configured(settings):
+        telegram_task = asyncio.create_task(
+            telegram_polling_loop(settings.owner_user_id, stop_event)
+        )
     try:
         yield
     finally:
         stop_event.set()
         await maintenance_task
+        if telegram_task:
+            await telegram_task
     # Encerramento gracioso do pool de conexões no shutdown
     close_db_pool()
 

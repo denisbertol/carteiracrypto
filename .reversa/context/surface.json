@@ -1,0 +1,89 @@
+{
+  "generated_at": "2026-11-02T00:42:00Z",
+  "project_root": "c:\\Users\\denis\\Projetos\\carteira-crypto",
+  "languages": [
+    { "name": "Python", "extensions": [".py"], "file_count": 63 },
+    { "name": "JavaScript", "extensions": [".js", ".cjs"], "file_count": 9 },
+    { "name": "SQL", "extensions": [".sql"], "file_count": 6 },
+    { "name": "HTML", "extensions": [".html"], "file_count": 2 },
+    { "name": "CSS", "extensions": [".css"], "file_count": 1 }
+  ],
+  "primary_language": "Python",
+  "frameworks": [
+    { "name": "FastAPI", "version": ">=0.115.0", "source": "requirements.txt" },
+    { "name": "Uvicorn", "version": ">=0.30.0", "source": "requirements.txt" },
+    { "name": "Pydantic", "version": ">=2.8.0", "source": "requirements.txt" },
+    { "name": "psycopg", "version": ">=3.2.0", "source": "requirements.txt" },
+    { "name": "Jinja2", "version": ">=3.1.4", "source": "requirements.txt" },
+    { "name": "PyJWT", "version": ">=2.9.0", "source": "requirements.txt" },
+    { "name": "httpx", "version": ">=0.27.0", "source": "requirements.txt" }
+  ],
+  "package_manager": "pip",
+  "entry_points": [
+    { "path": "app/main.py", "type": "app_entry" },
+    { "path": "scripts/entrypoint.sh", "type": "server_entry" },
+    { "path": "app/migrate.py", "type": "migration_entry" }
+  ],
+  "config_files": [
+    ".env.example",
+    "app/config.py",
+    "pyproject.toml",
+    "requirements.txt",
+    "Dockerfile"
+  ],
+  "ci_cd": [],
+  "docker": {
+    "dockerfile": "Dockerfile"
+  },
+  "database_hints": [
+    { "path": "migrations/001_initial.sql", "type": "sql_migration" },
+    { "path": "migrations/002_allocation_targets.sql", "type": "sql_migration" },
+    { "path": "migrations/003_price_monitoring.sql", "type": "sql_migration" },
+    { "path": "migrations/004_price_history.sql", "type": "sql_migration" },
+    { "path": "migrations/005_column_preferences.sql", "type": "sql_migration" },
+    { "path": "migrations/006_ai_settings.sql", "type": "sql_migration" }
+  ],
+  "test_framework": "unittest",
+  "test_file_count": 29,
+  "modules": [
+    "auth",
+    "ledger",
+    "allocation",
+    "monitoring",
+    "history",
+    "ai",
+    "exports",
+    "painel"
+  ],
+  "total_files": 108,
+  "organization_suggestion": {
+    "granularity": "endpoint",
+    "rationale": "Os contratos HTTP estão centralizados: app/main.py inclui oito routers e cada um declara o prefixo da API.",
+    "signals": [
+      {
+        "type": "centralized_routing",
+        "evidence": [
+          "app/main.py",
+          "app/routes/api.py",
+          "app/routes/auth.py",
+          "app/routes/allocations.py",
+          "app/routes/monitoring.py",
+          "app/routes/dashboard.py",
+          "app/routes/history.py",
+          "app/routes/exports.py",
+          "app/routes/ai.py"
+        ]
+      }
+    ],
+    "features": [
+      "auth",
+      "ledger",
+      "allocation",
+      "monitoring",
+      "history",
+      "ai",
+      "exports",
+      "painel"
+    ]
+  }
+}

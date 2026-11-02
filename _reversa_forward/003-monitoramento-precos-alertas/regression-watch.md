@@ -47,3 +47,7 @@ O watch principal permanece vazio. Os 8/8 cenários Chrome com API simulada refo
 ## Retomada de coding — 2026-10-03
 
 Nenhum W-item foi criado. A repetição dos cenários Chrome não altera o watch greenfield nem substitui as validações reais pendentes.
+
+## Baixa do operador — 2026-11-01
+
+Nenhum item W foi criado. As provas formais que ainda apareciam como pendentes neste arquivo foram dispensadas na mesma data e não passam a ser regras sob vigilância.

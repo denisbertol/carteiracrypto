@@ -45,7 +45,7 @@ Cada descrição inclui a evidência de conclusão esperada. Status indica execu
 | T015 | Conectar ciclo ao provedor fora da transação; snapshot de alvos/settings/mapeamentos é revalidado antes de persistir resultados, cache e avaliações; testar desativação durante fetch e commit falho (D-04/CA-05/07/08) | T009, T010, T011, T012, T014 | - | app/services/monitoring.py | 🟡 | [X] |
 | T016 | Implementar criação única de notificação por avaliação, ACK de exibição/leitura idempotentes e histórico paginado com expiração; separar criado de entregue (D-06/CA-04/11) | T015 | - | app/services/notifications.py | 🟡 | [X] |
 | T017 | Evoluir QuoteReader para ler cache por carteira sem HTTP e calcular frescor; USDT continua USD 1, fixture não entra no cache de produção (D-05/D-08/CA-09) | T002, T015 | - | app/services/quotes.py | 🟡 | [X] |
-| T018 | Implementar limpeza em lotes de até 1000 com exclusão por referência e lock singleton; preservar última cotação, orçamento, receipts e cadastros; passar T006 e teste de banco (D-07) | T002, T006, T007, T016 | - | app/services/retention.py | 🟡 | [ ] |
+| T018 | Implementar limpeza em lotes de até 1000 com exclusão por referência e lock singleton; preservar última cotação, orçamento, receipts e cadastros; passar T006 e teste de banco (D-07) | T002, T006, T007, T016 | - | app/services/retention.py | 🟡 | [X] |
 
 ## Fase 4, Integração
 
@@ -66,7 +66,7 @@ As tarefas adicionais abaixo pertencem à integração e preservam os IDs anteri
 | ID | Descrição | Dependências | Paralelismo | Arquivo alvo | Confidência | Status |
 |---|---|---|---|---|---|---|
 | T035 | Implementar reconciliação no startup e a cada 60 s sem requisições, antes da retenção; testar restart, lease vencida, finalização tardia e ausência de HTTP/alertas retroativos (A002/RF-08) | T014, T018 | - | app/services/monitoring_recovery.py; tests/test_monitoring_recovery.py | 🟡 | [X] |
-| T036 | Expor /dashboard autenticado com transação REPEATABLE READ e mapa único de preços; testar atualização concorrente entre leituras sem divergência de posição/alocação e CSV consistente individualmente (A001/CA-09) | T008, T019 | - | app/routes/dashboard.py; tests/test_dashboard_snapshot.py | 🟡 | [ ] |
+| T036 | Expor /dashboard autenticado com transação REPEATABLE READ e mapa único de preços; testar atualização concorrente entre leituras sem divergência de posição/alocação e CSV consistente individualmente (A001/CA-09) | T008, T019 | - | app/routes/dashboard.py; tests/test_dashboard_snapshot.py | 🟡 | [X] |
 
 ## Fase 5, Polimento
 
@@ -74,10 +74,10 @@ As tarefas adicionais abaixo pertencem à integração e preservam os IDs anteri
 |---|---|---|---|---|---|---|
 | T028 | Ajustar interface a 360 px, estados stale/indisponível, fonte/horário e atribuição CoinGecko; alertas não bloqueiam formulários (RF-09/11) | T024, T025, T027 | - | app/static/style.css; app/templates/index.html | 🟡 | [X] |
 | T029 | Verificar logs de ciclo/falha e remover exposição de chave, token, estratégia ou saldo desnecessário; produzir teste de sanitização | T015, T021, T022 | - | app/logging.py; tests/test_monitoring_logs.py | 🟡 | [X] |
-| T030 | Executar validação integrada de CA-01 a CA-12, browser 360 px, duas abas e regressões 001/002; anexar resultados distinguindo mocks, banco e navegador | T007, T008, T009, T010, T018, T019, T021, T022, T027, T028, T029 | - | _reversa_forward/003-monitoramento-precos-alertas/validation.md | 🟡 | [ ] |
+| T030 | Executar validação integrada de CA-01 a CA-12, browser 360 px, duas abas e regressões 001/002; anexar resultados distinguindo mocks, banco e navegador. Dispensada em 2026-11-01: a prova formal não será exigida. | T007, T008, T009, T010, T018, T019, T021, T022, T027, T028, T029 | - | _reversa_forward/003-monitoramento-precos-alertas/validation.md | 🟡 | [—] |
 | T031 | Documentar configuração, quota/reset, cobertura, atribuição, retenção, interrupções de navegador e rollback preservando autenticação; exemplos não contêm secrets | T028, T029 | - | README.md | 🟡 | [X] |
-| T032 | Verificar chave/configuração do operador e cobertura de três ativos em ambiente isolado disponível; registrar consumo projetado e limitações sem criar conta ou publicar produção | T010, T011, T013, T031 | - | _reversa_forward/003-monitoramento-precos-alertas/provider-validation.md | 🟡 | [ ] |
-| T033 | Executar prova real de seis ciclos de 5 minutos com três ativos; registrar coleta/avaliação/exibição, chamadas e comportamento ao fechar; sem credencial/ambiente, registrar pendência e não marcar concluída | T030, T032 | - | _reversa_forward/003-monitoramento-precos-alertas/live-validation.md | 🟡 | [ ] |
+| T032 | Verificar chave/configuração do operador e cobertura de três ativos em ambiente isolado disponível; registrar consumo projetado e limitações sem criar conta ou publicar produção. Dispensada em 2026-11-01: a prova formal não será exigida. | T010, T011, T013, T031 | - | _reversa_forward/003-monitoramento-precos-alertas/provider-validation.md | 🟡 | [—] |
+| T033 | Executar prova real de seis ciclos de 5 minutos com três ativos; registrar coleta/avaliação/exibição, chamadas e comportamento ao fechar. Dispensada em 2026-11-01: a prova formal não será exigida. | T030, T032 | - | _reversa_forward/003-monitoramento-precos-alertas/live-validation.md | 🟡 | [—] |
 | T034 | Registrar arquivos impactados e regras de regressão RF-01 a RF-11, usando evidências de T030/T033; nenhuma lacuna de execução pode ser apresentada como aprovação | T030, T031, T033 | - | _reversa_forward/003-monitoramento-precos-alertas/legacy-impact.md; _reversa_forward/003-monitoramento-precos-alertas/regression-watch.md | 🟡 | [X] |
 
 ## Rastreabilidade
@@ -113,3 +113,4 @@ Nenhuma ação de implementação executada. Antes de escrever código, reler a 
 |---|---|---|
 | 2026-09-27 | Decomposição inicial em cinco fases, com dependências e rastreabilidade | reversa-to-do |
 | 2026-09-27 | Revisão documental A001–A005, preservando IDs e acrescentando T035/T036; reauditoria pendente | revisão autorizada |
+| 2026-11-01 | T018 e T036 fechadas porque a limpeza e o /dashboard já estão no código. T030, T032 e T033 dispensadas a pedido do operador; a versão em uso foi declarada completa | reversa-sync |

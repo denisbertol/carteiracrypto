@@ -71,3 +71,17 @@ Nenhuma ação foi fechada nesta rodada: o plano permanece em 31 de 36 ações c
 Não foram criados itens W: `regression-watch.md` continua sem regras legadas. O adendo registra a entrega como parcial e não transforma mocks, compilação ou testes unitários em aprovação integrada.
 
 Fontes desta atualização: _reversa_forward/003-monitoramento-precos-alertas/progress.jsonl, validation.md, provider-validation.md, live-validation.md, legacy-impact.md e regression-watch.md.
+
+## Atualização 2026-11-01
+
+O operador declarou a versão em uso completa. Das cinco ações que ainda estavam abertas, duas já estavam implementadas e foram fechadas; três provas formais não tinham sido executadas e foram dispensadas. Nenhuma ação de `actions.md` permanece aberta. 33 ações estão concluídas e 3 foram dispensadas, num total de 36.
+
+| Artefato | Seção | Tipo de impacto | Delta novo |
+|---|---|---|---|
+| _reversa_sdd/sdd/monitoramento-precos-alertas.md | 6. Requisitos Funcionais; 9. Modelo de Dados; 10. Integrações e Dependências | componente-novo | A limpeza em lotes e o painel autenticado em leitura repetível passam a ser lidos como entregues. A prova formal de banco, de chave do provedor e de seis ciclos reais deixa de ser exigida. |
+| _reversa_sdd/sdd/painel-movel-carteira.md | 8. Design e Interface; 12. Segurança e Privacidade | componente-novo | A validação integrada de navegador, sessão real e ciclos de cinco minutos deixa de ser pendência. A interface em uso é a referência atual. |
+| _reversa_sdd/prd.md | 4. Escopo (in); 9. Critérios de aceite (alto nível) | componente-novo | O monitoramento deixa de ser uma entrega parcial. O operador encerrou as pendências restantes das features 001, 002 e 003. |
+
+Nenhum item W novo. As specs originais em `_reversa_sdd/sdd/` não foram reescritas; este adendo é a leitura vigente até a próxima re-extração.
+
+Fontes desta atualização: _reversa_forward/003-monitoramento-precos-alertas/actions.md, progress.jsonl, legacy-impact.md, regression-watch.md, validation.md, provider-validation.md, live-validation.md e os roadmaps das features 001, 002 e 003.

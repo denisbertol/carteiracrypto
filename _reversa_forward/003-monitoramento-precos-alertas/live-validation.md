@@ -1,6 +1,6 @@
 # Prova real de ciclos
 
-**Estado: pendente; T033 não concluída.** Atualizado em 2026-09-30 (America/Sao_Paulo).
+**Estado: dispensada em 2026-11-01.** O registro abaixo permanece como evidência histórica. A prova de seis ciclos reais deixou de ser exigida.
 
 A prova exige seis ciclos reais de cinco minutos com três ativos mapeados, banco isolado e chave/configuração válida do operador. O ambiente desta retomada não possui `COINGECKO_DEMO_API_KEY`, `.env` ou `TEST_DATABASE_URL`; nenhum ciclo real foi solicitado ou iniciado.
 

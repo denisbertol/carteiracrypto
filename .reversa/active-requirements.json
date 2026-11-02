@@ -1,10 +1,17 @@
 {
   "schema-version": 1,
-  "feature-dir": "_reversa_forward/003-monitoramento-precos-alertas",
-  "feature-id": "003",
-  "short-name": "monitoramento-precos-alertas",
-  "started-at": "2026-09-27T22:26:43.6973147-03:00",
-  "current-stage": "requirements",
-  "stages-completed": [],
+  "feature-dir": "_reversa_forward/004-agente-telegram",
+  "feature-id": "004",
+  "short-name": "agente-telegram",
+  "started-at": "2026-11-01T21:57:54.245229-03:00",
+  "current-stage": "done",
+  "stages-completed": [
+    "requirements",
+    "clarify",
+    "plan",
+    "to-do",
+    "coding",
+    "sync"
+  ],
   "paused-features": []
 }

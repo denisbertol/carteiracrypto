@@ -95,14 +95,16 @@ Manter endpoints das Features 001/002. Adicionar quote_snapshot_at e freshness �
 
 ## 10. Critério de pronto
 
-- [ ] Ações futuras concluídas; cross-check sem CRITICAL/HIGH; regression-watch gerado.
-- [ ] CA-01 a CA-12 e regressões contábeis/alocação aprovados.
-- [ ] Testar 0/100%, bordas, preço zero/inválido, resposta parcial, quota, timeout, cache antigo, duas abas, retomada, revogação do alvo e ACK repetido.
-- [ ] GET / sem dados privados, tokens de teste rejeitados no runtime e JWT válido de terceiro negado.
-- [ ] Teste PostgreSQL real comprova unicidade, RLS, reserva concorrente e limpeza sem remover cadastro ou última cotação.
-- [ ] Testes com relógio avançado cobrem 30 dias sem esperar tempo real; navegador em 360 px comprova visibilidade e reautenticação.
-- [ ] Prova com 3 ativos suportados e pelo menos 6 ciclos reais, registrando latência, consumo e limitações; nenhum sucesso alegado com mocks apenas.
-- [ ] Nenhuma chamada de mercado gerada por leitura de posição/alocação ou por aplicativo fechado.
+Dispensado em 2026-11-01. O operador declarou a versão em uso completa. Estes portões deixam de ser pendência e não foram reexecutados nesta sincronização:
+
+- Ações futuras concluídas; cross-check sem CRITICAL/HIGH; regression-watch gerado.
+- CA-01 a CA-12 e regressões contábeis/alocação aprovados.
+- Testar 0/100%, bordas, preço zero/inválido, resposta parcial, quota, timeout, cache antigo, duas abas, retomada, revogação do alvo e ACK repetido.
+- GET / sem dados privados, tokens de teste rejeitados no runtime e JWT válido de terceiro negado.
+- Teste PostgreSQL real comprova unicidade, RLS, reserva concorrente e limpeza sem remover cadastro ou última cotação.
+- Testes com relógio avançado cobrem 30 dias sem esperar tempo real; navegador em 360 px comprova visibilidade e reautenticação.
+- Prova com 3 ativos suportados e pelo menos 6 ciclos reais, registrando latência, consumo e limitações; nenhum sucesso alegado com mocks apenas.
+- Nenhuma chamada de mercado gerada por leitura de posição/alocação ou por aplicativo fechado.
 
 ## 11. Histórico de alterações
 

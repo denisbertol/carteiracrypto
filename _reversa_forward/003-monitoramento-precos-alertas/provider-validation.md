@@ -1,6 +1,6 @@
 # Validação de configuração do provedor
 
-**Estado: pendente; T032 não concluída.** Atualizado em 2026-09-30 (America/Sao_Paulo).
+**Estado: dispensada em 2026-11-01.** O registro abaixo permanece como evidência histórica. A verificação formal da chave e da cobertura deixou de ser exigida.
 
 ## Ambiente disponível
 
