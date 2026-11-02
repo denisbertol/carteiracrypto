@@ -169,8 +169,9 @@ def provider_configured(settings, now: datetime) -> bool:
 
 def is_telegram_configured(settings) -> bool:
     """Verifica se o token do bot do Telegram está configurado."""
-    token = settings.telegram_bot_token.get_secret_value() if hasattr(settings.telegram_bot_token, "get_secret_value") else str(settings.telegram_bot_token)
-    return bool(token and token.strip())
+    raw_token = settings.telegram_bot_token.get_secret_value() if hasattr(settings.telegram_bot_token, "get_secret_value") else str(settings.telegram_bot_token)
+    cleaned = (raw_token or "").strip().strip("\"'").strip()
+    return bool(cleaned)
 
 
 @lru_cache(maxsize=1)

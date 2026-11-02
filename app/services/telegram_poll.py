@@ -330,15 +330,19 @@ def process_single_telegram_update(
 async def telegram_polling_loop(owner_id: UUID, stop_event: asyncio.Event) -> None:
     """Loop contínuo de polling com proteção de trava única (Single Consumer)."""
     settings = get_settings()
-    if not is_telegram_configured(settings):
-        logger.info("Agente Telegram desligado (TELEGRAM_BOT_TOKEN não configurado).")
+    raw_token = settings.telegram_bot_token.get_secret_value() if hasattr(settings.telegram_bot_token, "get_secret_value") else str(settings.telegram_bot_token)
+    bot_token = (raw_token or "").strip().strip("\"'").strip()
+
+    if not bot_token:
+        print("INFO:     Agente Telegram desligado (TELEGRAM_BOT_TOKEN não configurado).", flush=True)
         return
 
-    bot_token = settings.telegram_bot_token.get_secret_value()
-    access_manager = TelegramAccessManager(settings.telegram_allowed_users)
+    raw_allowed = getattr(settings, "telegram_allowed_users", "")
+    cleaned_allowed = (raw_allowed or "").strip().strip("\"'").strip()
+    access_manager = TelegramAccessManager(cleaned_allowed)
     offset = 0
 
-    logger.info("Iniciando consumidor de mensagens do Telegram (long-polling)...")
+    print("INFO:     Iniciando consumidor de mensagens do Telegram (long-polling)...", flush=True)
 
     async with _poll_lock:
         async with httpx.AsyncClient(timeout=30.0) as client:

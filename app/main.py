@@ -64,9 +64,12 @@ async def lifespan(app: FastAPI):
     )
     telegram_task = None
     if is_telegram_configured(settings):
+        print("INFO:     Disparando tarefa em segundo plano do Telegram...", flush=True)
         telegram_task = asyncio.create_task(
             telegram_polling_loop(settings.owner_user_id, stop_event)
         )
+    else:
+        print("INFO:     TELEGRAM_BOT_TOKEN não detectado nas variáveis de ambiente.", flush=True)
     try:
         yield
     finally:
