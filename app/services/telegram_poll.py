@@ -53,17 +53,20 @@ def send_telegram_message(bot_token: str, chat_id: int, text: str) -> bool:
         "text": text,
         "parse_mode": "Markdown",
     }
-    try:
-        with httpx.Client(timeout=10.0) as client:
-            resp = client.post(url, json=payload)
-            if resp.status_code == 400:
-                # Tenta sem Markdown se houver erro de formatação
-                payload.pop("parse_mode", None)
+    for attempt in range(2):
+        try:
+            with httpx.Client(timeout=20.0) as client:
                 resp = client.post(url, json=payload)
-            return resp.status_code == 200
-    except Exception as e:
-        logger.error(f"Erro ao enviar mensagem Telegram para {chat_id}: {e}")
-        return False
+                if resp.status_code == 400:
+                    # Tenta sem Markdown se houver erro de formatação
+                    payload.pop("parse_mode", None)
+                    resp = client.post(url, json=payload)
+                if resp.status_code == 200:
+                    return True
+                logger.warning(f"Telegram sendMessage status {resp.status_code}: {resp.text}")
+        except Exception as e:
+            logger.warning(f"Tentativa {attempt+1} ao enviar mensagem Telegram para {chat_id} falhou: {e}")
+    return False
 
 
 def _get_active_assets(cur: Any, portfolio_id: UUID) -> List[Dict[str, Any]]:
