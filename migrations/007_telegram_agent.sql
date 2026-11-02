@@ -1,6 +1,8 @@
 -- Migration 007_telegram_agent.sql
 -- Estruturas de suporte ao Agente Telegram (vínculo de conta, rascunhos e controle de atualizações aplicadas)
 
+CREATE SCHEMA IF NOT EXISTS portfolio_private;
+
 CREATE TABLE IF NOT EXISTS portfolio_private.telegram_accounts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     portfolio_id UUID NOT NULL REFERENCES portfolio_private.portfolios(id) ON DELETE CASCADE,
